@@ -1,5 +1,4 @@
-import { USE_MOCKS } from '@/utils/devToggle';
-import { mockService } from '@/mocks/mockService';
+
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { api } from '@/api/client';
 
@@ -51,16 +50,16 @@ export const useProductDetail = (productId: string) => {
   });
 };
 
-export const useCreateProduct = () => {
-  return useMutation({
-    mutationFn: async (formData: FormData) => {
-      const res = await api.post('/admin/addproduct', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return res.data;
-    },
-  });
-};
+// export const useCreateProduct = () => {
+//   return useMutation({
+//     mutationFn: async (formData: FormData) => {
+//       const res = await api.post('/admin/addproduct', formData, {
+//         headers: { 'Content-Type': 'multipart/form-data' },
+//       });
+//       return res.data;
+//     },
+//   });
+// };
 
 export const useUpdateProduct = () => {
   return useMutation({

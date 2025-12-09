@@ -9,18 +9,22 @@ import {
   Image,
   StyleSheet,
   Alert,
+  Platform,
+  KeyboardAvoidingView,
+  LayoutAnimation,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
 import { useCreateAdminProduct } from "../../api/hooks/useAdmin";
 import Toast from "react-native-toast-message";
 import { useNavigation } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Ionicons } from "@expo/vector-icons";
 
-// ----- enums as string arrays (must match backend values) -----
+// ----- Constants & Enums -----
 
 const CATEGORY_OPTIONS = [
-  "beauty",
-  "cosmetics",
+  "beauty & cosmetics",
   "general_store",
   "gifts",
 ] as const;
@@ -58,7 +62,6 @@ const SUBCATEGORY_OPTIONS = [
   "gifts_festive_gifts",
 ] as const;
 
-// subset of subSubCategory (extend if you want all)
 const SUBSUBCATEGORY_OPTIONS = [
   "face_wash",
   "moisturizer",
@@ -96,10 +99,9 @@ const SUBSUBCATEGORY_OPTIONS = [
   "custom_mug",
 ] as const;
 
-// common units for measurement
 const MEASUREMENT_UNITS = ["", "ml", "L", "g", "kg", "pcs"] as const;
 
-// ----- local types -----
+// ----- Types -----
 
 type AssetLike = {
   uri: string;
@@ -115,19 +117,21 @@ type PriceTierForm = {
 
 type VariantForm = {
   packOf: string;
-  // NEW: measurement fields for each variant
-  measurementValue: string; // e.g. "200"
-  measurementUnit: string; // "ml", "L", "g", "kg", "pcs"
-  measurementLabel: string; // e.g. "200 ml", "Shade 01"
+  measurementValue: string;
+  measurementUnit: string;
+  measurementLabel: string;
   mrp: string;
   stock: string;
   isActive: boolean;
   sellingPrices: PriceTierForm[];
   images: AssetLike[];
+  isExpanded?: boolean;
 };
 
 const CreateProductScreen: React.FC = () => {
   const navigation = useNavigation();
+
+  // ----- State -----
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [brand, setBrand] = useState("");
@@ -142,12 +146,11 @@ const CreateProductScreen: React.FC = () => {
   const [deliveryWarranty, setDeliveryWarranty] = useState(false);
 
   const [isActive, setIsActive] = useState(true);
-
   const [thumbnail, setThumbnail] = useState<AssetLike | null>(null);
 
   const [variants, setVariants] = useState<VariantForm[]>([
     {
-      packOf: "",
+      packOf: "1",
       measurementValue: "",
       measurementUnit: "",
       measurementLabel: "",
@@ -156,6 +159,7 @@ const CreateProductScreen: React.FC = () => {
       isActive: true,
       sellingPrices: [{ minQuantity: "1", price: "", discount: "0" }],
       images: [],
+      isExpanded: true,
     },
   ]);
 
@@ -166,70 +170,91 @@ const CreateProductScreen: React.FC = () => {
     error,
   } = useCreateAdminProduct();
 
-  // ----- helpers -----
+  useEffect(() => {
+    if (isError) {
+      Toast.show({
+        type: "error",
+        text1: "Submission Failed",
+        text2: String(error),
+      });
+    }
+  }, [isError, error]);
+
+  // ----- Logic Helpers -----
+
+  const toggleVariantExpand = (index: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setVariants((prev) =>
+      prev.map((v, i) => ({
+        ...v,
+        isExpanded: i === index ? !v.isExpanded : false,
+      }))
+    );
+  };
 
   const askImagePermission = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission needed",
-        "Allow gallery access to upload images."
-      );
+      Alert.alert("Permission needed", "Allow gallery access to upload images.");
       return false;
     }
     return true;
   };
 
   const pickThumbnail = async () => {
-    const ok = await askImagePermission();
-    if (!ok) return;
+    if (!(await askImagePermission())) return;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"], // ⬅️ changed
-      allowsMultipleSelection: false,
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      const asset = result.assets[0];
-      setThumbnail({
-        uri: asset.uri,
-        fileName: asset.fileName ?? undefined,
-        mimeType: asset.mimeType ?? undefined,
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"], // ✅ latest format
+        allowsMultipleSelection: false,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
       });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setThumbnail({
+          uri: asset.uri,
+          fileName: asset.fileName || `thumb-${Date.now()}.jpg`,
+          mimeType: asset.mimeType || "image/jpeg",
+        });
+      }
+    } catch (err) {
+      console.error("Image Picker Error", err);
+      Alert.alert("Error", "Could not select image. Please try again.");
     }
   };
 
   const pickVariantImages = async (vIndex: number) => {
-    const ok = await askImagePermission();
-    if (!ok) return;
+    if (!(await askImagePermission())) return;
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      setVariants((prev) => {
-        const copy = [...prev];
-        const oldImages = copy[vIndex].images || [];
-        const newImages: AssetLike[] = result.assets.map((a) => ({
-          uri: a.uri,
-          fileName: a.fileName ?? undefined,
-          mimeType: a.mimeType ?? undefined,
-        }));
-        copy[vIndex].images = [...oldImages, ...newImages];
-        return copy;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"], // ✅ latest format
+        allowsMultipleSelection: true,
+        quality: 0.8,
       });
+
+      if (!result.canceled && result.assets) {
+        setVariants((prev) => {
+          const copy = [...prev];
+          const newImages = result.assets.map((a, i) => ({
+            uri: a.uri,
+            fileName: a.fileName || `variant-${Date.now()}-${i}.jpg`,
+            mimeType: a.mimeType || "image/jpeg",
+          }));
+          copy[vIndex].images = [...copy[vIndex].images, ...newImages];
+          return copy;
+        });
+      }
+    } catch (err) {
+      console.error("Variant Picker Error", err);
     }
   };
 
-  const updateVariantField = (
-    idx: number,
-    key: keyof VariantForm,
-    value: string | boolean
-  ) => {
+  const updateVariantField = (idx: number, key: keyof VariantForm, value: any) => {
     setVariants((prev) => {
       const copy = [...prev];
       (copy[idx] as any)[key] = value;
@@ -246,17 +271,47 @@ const CreateProductScreen: React.FC = () => {
     setVariants((prev) => {
       const copy = [...prev];
       const tiers = [...copy[vIndex].sellingPrices];
-      tiers[pIndex] = { ...tiers[pIndex], [key]: value };
+
+      if (key === "price") {
+        const mrp = parseFloat(copy[vIndex].mrp) || 0;
+        const price = parseFloat(value) || 0;
+        let discount = "0";
+        if (mrp > 0 && price > 0 && price < mrp) {
+          discount = (((mrp - price) / mrp) * 100).toFixed(2);
+        }
+        tiers[pIndex] = { ...tiers[pIndex], price: value, discount };
+      } else {
+        tiers[pIndex] = { ...tiers[pIndex], [key]: value };
+      }
+
       copy[vIndex].sellingPrices = tiers;
       return copy;
     });
   };
 
+  const updateVariantMRP = (vIndex: number, mrpValue: string) => {
+    setVariants((prev) => {
+      const copy = [...prev];
+      copy[vIndex].mrp = mrpValue;
+      const mrp = parseFloat(mrpValue) || 0;
+      copy[vIndex].sellingPrices = copy[vIndex].sellingPrices.map((tier) => {
+        const price = parseFloat(tier.price) || 0;
+        let discount = "0";
+        if (mrp > 0 && price > 0 && price < mrp) {
+          discount = (((mrp - price) / mrp) * 100).toFixed(2);
+        }
+        return { ...tier, discount };
+      });
+      return copy;
+    });
+  };
+
   const addVariant = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setVariants((prev) => [
-      ...prev,
+      ...prev.map((v) => ({ ...v, isExpanded: false })),
       {
-        packOf: "",
+        packOf: "1",
         measurementValue: "",
         measurementUnit: "",
         measurementLabel: "",
@@ -265,21 +320,24 @@ const CreateProductScreen: React.FC = () => {
         isActive: true,
         sellingPrices: [{ minQuantity: "1", price: "", discount: "0" }],
         images: [],
+        isExpanded: true,
       },
     ]);
   };
 
   const removeVariant = (index: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setVariants((prev) => prev.filter((_, i) => i !== index));
   };
 
   const addPriceTier = (vIndex: number) => {
     setVariants((prev) => {
       const copy = [...prev];
-      copy[vIndex].sellingPrices = [
-        ...copy[vIndex].sellingPrices,
-        { minQuantity: "1", price: "", discount: "0" },
-      ];
+      copy[vIndex].sellingPrices.push({
+        minQuantity: "1",
+        price: "",
+        discount: "0",
+      });
       return copy;
     });
   };
@@ -294,27 +352,23 @@ const CreateProductScreen: React.FC = () => {
     });
   };
 
-  // ----- submit using .mutate -----
+  const removeVariantImage = (vIndex: number, imgIndex: number) => {
+    setVariants((prev) => {
+      const copy = [...prev];
+      copy[vIndex].images = copy[vIndex].images.filter(
+        (_, i) => i !== imgIndex
+      );
+      return copy;
+    });
+  };
 
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      Alert.alert("Error", "Product name is required.");
-      return;
-    }
-    if (!brand.trim()) {
-      Alert.alert("Error", "Product Brand is required.");
-      return;
-    }
-    if (!slug.trim()) {
-      Alert.alert("Error", "Slug is required.");
+    if (!name.trim() || !brand.trim() || !slug.trim()) {
+      Alert.alert("Missing Fields", "Please fill in Brand, Name, and Slug.");
       return;
     }
     if (!thumbnail) {
-      Alert.alert("Error", "Please select a thumbnail image.");
-      return;
-    }
-    if (!variants.length) {
-      Alert.alert("Error", "At least one variant is required.");
+      Alert.alert("Missing Image", "Please add a product thumbnail.");
       return;
     }
 
@@ -340,27 +394,20 @@ const CreateProductScreen: React.FC = () => {
       isActive,
       variants: variants.map((v) => {
         const hasMeasurement =
-          v.measurementValue.trim() ||
-          v.measurementUnit.trim() ||
-          v.measurementLabel.trim();
-
-        const measurement = hasMeasurement
-          ? {
-              value: v.measurementValue
-                ? Number(v.measurementValue)
-                : undefined,
-              unit: v.measurementUnit || undefined,
-              label: v.measurementLabel || undefined,
-            }
-          : undefined;
-
+          v.measurementValue || v.measurementUnit || v.measurementLabel;
         return {
           packOf: Number(v.packOf || 0),
-          measurement,
+          measurement: hasMeasurement
+            ? {
+                value: Number(v.measurementValue) || undefined,
+                unit: v.measurementUnit || undefined,
+                label: v.measurementLabel || undefined,
+              }
+            : undefined,
           mrp: Number(v.mrp || 0),
           stock: Number(v.stock || 0),
           isActive: v.isActive,
-          images: [], // will be filled server-side from uploaded files
+          images: [],
           sellingPrices: v.sellingPrices.map((p) => ({
             minQuantity: Number(p.minQuantity || 1),
             price: Number(p.price || 0),
@@ -371,654 +418,1021 @@ const CreateProductScreen: React.FC = () => {
     };
 
     const formData = new FormData();
-
     formData.append("data", JSON.stringify(productPayload));
 
+    const thumbUri =
+      Platform.OS === "android"
+        ? thumbnail.uri
+        : thumbnail.uri.replace("file://", "");
+    const thumbName =
+      thumbnail.fileName || thumbUri.split("/").pop() || "thumbnail.jpg";
+    const thumbType = thumbnail.mimeType || "image/jpeg";
+
     formData.append("thumbnail", {
-      uri: thumbnail.uri,
-      name: thumbnail.fileName || "thumbnail.jpg",
-      type: thumbnail.mimeType || "image/jpeg",
+      uri: thumbUri,
+      name: thumbName,
+      type: thumbType,
     } as any);
 
     variants.forEach((v, vIndex) => {
       v.images.forEach((img, imgIndex) => {
+        const vImgUri =
+          Platform.OS === "android"
+            ? img.uri
+            : img.uri.replace("file://", "");
+        const vImgName =
+          img.fileName ||
+          vImgUri.split("/").pop() ||
+          `v-${vIndex}-${imgIndex}.jpg`;
+        const vImgType = img.mimeType || "image/jpeg";
+
         formData.append(`variantImages[${vIndex}]`, {
-          uri: img.uri,
-          name: img.fileName || `variant-${vIndex}-${imgIndex}.jpg`,
-          type: img.mimeType || "image/jpeg",
+          uri: vImgUri,
+          name: vImgName,
+          type: vImgType,
         } as any);
       });
     });
 
-    const res: { message: string; products: object } = await mutateAsync({
-      formData,
+    const res: any = await mutateAsync({ formData });
+    Toast.show({
+      type: "success",
+      text1: res?.message || "Product Created!",
     });
-
-    Toast.show({ type: "success", text1: res?.message });
+    // @ts-ignore
     navigation.goBack();
   };
 
-  // ----- UI -----
+  // ----- UI Components -----
 
-  useEffect(() => {
-    if (isError) {
-      Toast.show({ type: "error", text1: String(error) });
-    }
-  }, [isError]);
+  const InputField = ({
+    label,
+    value,
+    onChange,
+    placeholder,
+    multiline = false,
+    keyboardType = "default",
+    style,
+  }: any) => (
+    <View style={[styles.inputGroup, style]}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.textArea]}
+        placeholder={placeholder}
+        placeholderTextColor="#94a3b8"
+        value={value}
+        onChangeText={onChange}
+        multiline={multiline}
+        keyboardType={keyboardType}
+        textAlignVertical={multiline ? "top" : "center"}
+      />
+    </View>
+  );
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={{ paddingBottom: 40 }}
-    >
-      <Text style={styles.title}>Create Product</Text>
-      <Text style={styles.subtitle}>Beauty • Cosmetics • General • Gifts</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Basic Info</Text>
-        <Text style={styles.label}>Brand</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. Lakme"
-          placeholderTextColor="#9ca3af"
-          value={brand}
-          onChangeText={(t) => setBrand(t)}
-        />
-        <Text style={styles.label}>Name</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g. Hydrating Face Wash"
-          placeholderTextColor="#9ca3af"
-          value={name}
-          onChangeText={(t) => {
-            setName(t);
-            if (!slug) {
-              setSlug(
-                t
-                  .toLowerCase()
-                  .trim()
-                  .replace(/[^a-z0-9]+/g, "-")
-                  .replace(/^-+|-+$/g, "")
-              );
-            }
-          }}
-        />
-
-        <Text style={styles.label}>Slug</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="hydrating-face-wash"
-          placeholderTextColor="#9ca3af"
-          value={slug}
-          onChangeText={setSlug}
-        />
-
-        <Text style={styles.label}>Category</Text>
-        <View style={styles.pickerWrapper}>
-          <Picker
-            selectedValue={category}
-            onValueChange={(value: any) => setCategory(value.toString())}
-            style={styles.picker}
-            dropdownIconColor="#6b7280"
-          >
-            {CATEGORY_OPTIONS.map((c) => (
-              <Picker.Item
-                key={c}
-                label={c.replace(/_/g, " ").toUpperCase()}
-                value={c}
-              />
-            ))}
-          </Picker>
-        </View>
-
-        <Text style={styles.label}>Sub Category</Text>
-        <View style={styles.pickerWrapper}>
-          <Picker
-            selectedValue={subCategory}
-            onValueChange={(value: any) => setSubCategory(value?.toString())}
-            style={styles.picker}
-            dropdownIconColor="#6b7280"
-          >
-            <Picker.Item label="Select..." value={undefined} />
-            {SUBCATEGORY_OPTIONS.map((c) => (
-              <Picker.Item
-                key={c}
-                label={c.replace(/_/g, " ").toUpperCase()}
-                value={c}
-              />
-            ))}
-          </Picker>
-        </View>
-
-        <Text style={styles.label}>Sub Sub Category</Text>
-        <View style={styles.pickerWrapper}>
-          <Picker
-            selectedValue={subSubCategory}
-            onValueChange={(value: any) => setSubSubCategory(value?.toString())}
-            style={styles.picker}
-            dropdownIconColor="#6b7280"
-          >
-            <Picker.Item label="Select..." value={undefined} />
-            {SUBSUBCATEGORY_OPTIONS.map((c) => (
-              <Picker.Item
-                key={c}
-                label={c.replace(/_/g, " ").toUpperCase()}
-                value={c}
-              />
-            ))}
-          </Picker>
-        </View>
-
-        <Text style={styles.label}>Tags (comma separated)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="facewash, dry-skin, gentle"
-          placeholderTextColor="#9ca3af"
-          value={tagsInput}
-          onChangeText={setTagsInput}
-        />
-
-        <Text style={styles.label}>Description</Text>
-        <TextInput
-          style={[styles.input, { height: 90, textAlignVertical: "top" }]}
-          placeholder="Short description..."
-          placeholderTextColor="#9ca3af"
-          value={description}
-          multiline
-          onChangeText={setDescription}
-        />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Thumbnail</Text>
-        <TouchableOpacity
-          style={styles.thumbnailButton}
-          onPress={pickThumbnail}
+    <View style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.thumbnailButtonText}>
-            {thumbnail ? "Change Thumbnail" : "Upload Thumbnail"}
-          </Text>
-        </TouchableOpacity>
+          {/* Header */}
+          <LinearGradient
+            colors={["#6366f1", "#4f46e5"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.headerGradient}
+          >
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            >
+              <Ionicons name="arrow-back" size={24} color="white" />
+            </TouchableOpacity>
+            <View>
+              <Text style={styles.headerTitle}>Add New Product</Text>
+              <Text style={styles.headerSubtitle}>
+                URS Shop
+              </Text>
+            </View>
+          </LinearGradient>
 
-        {thumbnail && (
-          <Image
-            source={{ uri: thumbnail.uri }}
-            style={styles.thumbnailPreview}
-          />
-        )}
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.headerRow}>
-          <Text style={styles.sectionTitle}>Variants</Text>
-          <TouchableOpacity onPress={addVariant}>
-            <Text style={styles.addLink}>+ Add Variant</Text>
-          </TouchableOpacity>
-        </View>
-
-        {variants.map((v, vIndex) => (
-          <View key={vIndex} style={styles.variantCard}>
-            <View style={styles.variantHeaderRow}>
-              <Text style={styles.variantTitle}>Variant #{vIndex + 1}</Text>
-              {variants.length > 1 && (
-                <TouchableOpacity onPress={() => removeVariant(vIndex)}>
-                  <Text style={styles.removeText}>Remove</Text>
-                </TouchableOpacity>
-              )}
+          {/* 1. General Info */}
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <View style={[styles.iconBox, { backgroundColor: "#e0e7ff" }]}>
+                <Text>📝</Text>
+              </View>
+              <Text style={styles.cardTitle}>Basic Details</Text>
             </View>
 
-            <Text style={styles.label}>Pack Of</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={v.packOf}
-              onChangeText={(t) => updateVariantField(vIndex, "packOf", t)}
-              placeholder="e.g. 1, 2, 3..."
-              placeholderTextColor="#9ca3af"
+            <InputField
+              label="Brand Name"
+              value={brand}
+              onChange={setBrand}
+              placeholder="e.g. Lakme"
+            />
+            <InputField
+              label="Product Name"
+              value={name}
+              onChange={(t: string) => {
+                setName(t);
+                if (!slug)
+                  setSlug(
+                    t
+                      .toLowerCase()
+                      .trim()
+                      .replace(/[^a-z0-9]+/g, "-")
+                  );
+              }}
+              placeholder="e.g. 9to5 Lipstick"
             />
 
-            {/* NEW: measurement section */}
-            <Text style={[styles.label, { marginTop: 10 }]}>
-              Measurement (optional)
-            </Text>
-            <View style={styles.measurementRow}>
-              <View style={{ flex: 1, marginRight: 6 }}>
-                <Text style={styles.smallLabel}>Value</Text>
-                <TextInput
-                  style={styles.inputSm}
-                  keyboardType="numeric"
-                  value={v.measurementValue}
-                  onChangeText={(t) =>
-                    updateVariantField(vIndex, "measurementValue", t)
-                  }
-                  placeholder="e.g. 200"
-                  placeholderTextColor="#9ca3af"
-                />
-              </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Slug (URL)</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  { backgroundColor: "#f1f5f9", color: "#64748b" },
+                ]}
+                value={slug}
+                onChangeText={setSlug}
+                placeholder="product-url-slug"
+                autoCapitalize="none"
+              />
+            </View>
 
-              <View style={{ flex: 1, marginRight: 0.5 }}>
-                <Text style={styles.smallLabel}>Unit</Text>
-                <View style={styles.pickerWrapperSm}>
-                 
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                <Text style={styles.label}>Category</Text>
+                <View style={styles.pickerContainer}>
                   <Picker
-                    selectedValue={v.measurementUnit}
-                    onValueChange={(val: string) =>
-                      updateVariantField(
-                        vIndex,
-                        "measurementUnit",
-                        val?.toString()
-                      )
-                    }
-                    style={styles.pickerSm}
-                    dropdownIconColor="#6b7280"
+                    selectedValue={category}
+                    onValueChange={(itemValue) => setCategory(itemValue)}
+                    style={styles.picker}
+                    dropdownIconColor="#6366f1"
                   >
-                    {MEASUREMENT_UNITS.map((u) => (
+                    {CATEGORY_OPTIONS.map((c) => (
                       <Picker.Item
-                        key={u || "none"}
-                        label={u || "Select"}
-                        value={u}
+                        key={c}
+                        label={c.replace(/_/g, " ").toUpperCase()}
+                        value={c}
+                        color="#000"
                       />
                     ))}
                   </Picker>
                 </View>
               </View>
-
-            </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.smallLabel}>Label</Text>
-                <TextInput
-                  style={styles.inputSm}
-                  value={v.measurementLabel}
-                  onChangeText={(t) =>
-                    updateVariantField(vIndex, "measurementLabel", t)
-                  }
-                  placeholder="e.g. 200 ml, Shade 01"
-                  placeholderTextColor="#9ca3af"
-                />
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                <Text style={styles.label}>Sub-Category</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={subCategory}
+                    onValueChange={(itemValue) => setSubCategory(itemValue)}
+                    style={styles.picker}
+                    dropdownIconColor="#6366f1"
+                  >
+                    <Picker.Item
+                      label="Select..."
+                      value={undefined}
+                      color="#94a3b8"
+                    />
+                    {SUBCATEGORY_OPTIONS.map((c) => (
+                      <Picker.Item
+                        key={c}
+                        label={c.replace("beauty_", "").replace(/_/g, " ")}
+                        value={c}
+                        color="#000"
+                      />
+                    ))}
+                  </Picker>
+                </View>
               </View>
+            </View>
 
-            <Text style={styles.label}>MRP</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={v.mrp}
-              onChangeText={(t) => updateVariantField(vIndex, "mrp", t)}
-              placeholder="e.g. 299"
-              placeholderTextColor="#9ca3af"
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Specific Type (Optional)</Text>
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={subSubCategory}
+                  onValueChange={(val) => setSubSubCategory(val)}
+                  style={styles.picker}
+                  dropdownIconColor="#6366f1"
+                >
+                  <Picker.Item
+                    label="Select Specific Type..."
+                    value={undefined}
+                    color="#94a3b8"
+                  />
+                  {SUBSUBCATEGORY_OPTIONS.map((c) => (
+                    <Picker.Item
+                      key={c}
+                      label={c.replace(/_/g, " ")}
+                      value={c}
+                      color="#000"
+                    />
+                  ))}
+                </Picker>
+              </View>
+            </View>
+
+            <InputField
+              label="Tags (Comma separated)"
+              value={tagsInput}
+              onChange={setTagsInput}
+              placeholder="organic, sale, new"
             />
-
-            <Text style={styles.label}>Stock</Text>
-            <TextInput
-              style={styles.input}
-              keyboardType="numeric"
-              value={v.stock}
-              onChangeText={(t) => updateVariantField(vIndex, "stock", t)}
-              placeholder="e.g. 50"
-              placeholderTextColor="#9ca3af"
+            <InputField
+              label="Description"
+              value={description}
+              onChange={setDescription}
+              placeholder="Product details..."
+              multiline
             />
+          </View>
 
-            <View style={styles.toggleRow}>
-              <Text style={styles.label}>Active</Text>
+          {/* 2. Media */}
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <View style={[styles.iconBox, { backgroundColor: "#fce7f3" }]}>
+                <Text>📸</Text>
+              </View>
+              <Text style={styles.cardTitle}>Primary Media</Text>
+            </View>
+            <Text style={styles.label}>Main Thumbnail *</Text>
+            <TouchableOpacity
+              onPress={pickThumbnail}
+              style={styles.thumbnailUploadArea}
+            >
+              {thumbnail ? (
+                <View style={styles.fullWidthImageContainer}>
+                  <Image
+                    source={{ uri: thumbnail.uri }}
+                    style={styles.thumbnailImage}
+                    resizeMode="cover"
+                  />
+                  <View style={styles.editImageBadge}>
+                    <Ionicons name="pencil" size={16} color="white" />
+                    <Text style={styles.editImageText}>Edit</Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.uploadPlaceholder}>
+                  <Ionicons
+                    name="image-outline"
+                    size={40}
+                    color="#cbd5e1"
+                  />
+                  <Text style={styles.uploadText}>
+                    Tap to upload cover image
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* 3. Variants */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionHeaderText}>Product Variants</Text>
+            <TouchableOpacity
+              onPress={addVariant}
+              style={styles.addVariantButton}
+            >
+              <Ionicons name="add" size={18} color="white" />
+              <Text style={styles.addVariantButtonText}>Add Variant</Text>
+            </TouchableOpacity>
+          </View>
+
+          {variants.map((v, vIndex) => (
+            <View key={vIndex} style={[styles.card, styles.variantCard]}>
+              <TouchableOpacity
+                style={styles.variantHeader}
+                onPress={() => toggleVariantExpand(vIndex)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.variantHeaderLeft}>
+                  <View
+                    style={[
+                      styles.variantNumberBadge,
+                      !v.isActive && styles.inactiveBadge,
+                    ]}
+                  >
+                    <Text style={styles.variantNumberText}>
+                      #{vIndex + 1}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={styles.variantTitle}>
+                      {v.measurementValue
+                        ? `${v.measurementValue}${v.measurementUnit}`
+                        : `Variant ${vIndex + 1}`}
+                    </Text>
+                    <Text style={styles.variantSubtitle}>
+                      Stock: {v.stock || 0} • MRP: ₹{v.mrp || 0}
+                    </Text>
+                  </View>
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  {variants.length > 1 && (
+                    <TouchableOpacity
+                      onPress={() => removeVariant(vIndex)}
+                      style={styles.iconButton}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={20}
+                        color="#ef4444"
+                      />
+                    </TouchableOpacity>
+                  )}
+                  <Ionicons
+                    name={v.isExpanded ? "chevron-up" : "chevron-down"}
+                    size={24}
+                    color="#64748b"
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {v.isExpanded && (
+                <View style={styles.variantBody}>
+                  <View style={styles.divider} />
+
+                  <View style={styles.row}>
+                    <InputField
+                      label="Pack Of"
+                      value={v.packOf}
+                      onChange={(t: string) =>
+                        updateVariantField(vIndex, "packOf", t)
+                      }
+                      style={{ flex: 1, marginRight: 8 }}
+                      keyboardType="numeric"
+                      placeholder="1"
+                    />
+                    <InputField
+                      label="Stock"
+                      value={v.stock}
+                      onChange={(t: string) =>
+                        updateVariantField(vIndex, "stock", t)
+                      }
+                      style={{ flex: 1, marginLeft: 8 }}
+                      keyboardType="numeric"
+                      placeholder="100"
+                    />
+                  </View>
+
+                  {/* Measurement */}
+                  <Text style={styles.subLabel}>Measurement</Text>
+                  <View style={styles.measurementRow}>
+                    <View style={{ flex: 1 }}>
+                      <TextInput
+                        style={styles.inputSm}
+                        placeholder="Value (200)"
+                        keyboardType="numeric"
+                        value={v.measurementValue}
+                        onChangeText={(t) =>
+                          updateVariantField(vIndex, "measurementValue", t)
+                        }
+                      />
+                    </View>
+
+                    <View style={styles.measurementPickerWrapper}>
+                      <Picker
+                        selectedValue={v.measurementUnit}
+                        onValueChange={(val) =>
+                          updateVariantField(vIndex, "measurementUnit", val)
+                        }
+                        style={styles.pickerSm}
+                        mode="dropdown"
+                        dropdownIconColor="#000"
+                      >
+                        {MEASUREMENT_UNITS.map((u) => (
+                          <Picker.Item
+                            key={u}
+                            label={u || "Unit"}
+                            value={u}
+                            color="#000000"
+                          />
+                        ))}
+                      </Picker>
+                    </View>
+
+                    <View style={{ flex: 2 }}>
+                      <TextInput
+                        style={styles.inputSm}
+                        placeholder="Label (e.g. 200ml)"
+                        value={v.measurementLabel}
+                        onChangeText={(t) =>
+                          updateVariantField(vIndex, "measurementLabel", t)
+                        }
+                      />
+                    </View>
+                  </View>
+
+                  {/* MRP & Active */}
+                  <View
+                    style={[
+                      styles.row,
+                      { marginTop: 16, alignItems: "center" },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.label}>MRP (₹)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={v.mrp}
+                        onChangeText={(t) => updateVariantMRP(vIndex, t)}
+                        keyboardType="numeric"
+                        placeholder="599"
+                      />
+                    </View>
+                    <View style={{ marginLeft: 16, alignItems: "center" }}>
+                      <Text style={styles.label}>Active</Text>
+                      <Switch
+                        value={v.isActive}
+                        onValueChange={(val) =>
+                          updateVariantField(vIndex, "isActive", val)
+                        }
+                        trackColor={{ true: "#6366f1" }}
+                      />
+                    </View>
+                  </View>
+
+                  {/* Selling Prices */}
+                  <View style={styles.pricingContainer}>
+                    <Text style={styles.subLabel}>
+                      Wholesale / Selling Prices
+                    </Text>
+                    {v.sellingPrices.map((p, pIndex) => (
+                      <View key={pIndex} style={styles.priceRow}>
+                        <View style={{ width: 60 }}>
+                          <Text style={styles.tinyLabel}>Min Qty</Text>
+                          <TextInput
+                            style={styles.inputXs}
+                            value={p.minQuantity}
+                            keyboardType="numeric"
+                            onChangeText={(t) =>
+                              updatePriceTierField(
+                                vIndex,
+                                pIndex,
+                                "minQuantity",
+                                t
+                              )
+                            }
+                          />
+                        </View>
+                        <View style={{ flex: 1, marginHorizontal: 8 }}>
+                          <Text style={styles.tinyLabel}>Price (₹)</Text>
+                          <TextInput
+                            style={[
+                              styles.inputXs,
+                              {
+                                fontWeight: "bold",
+                                color: "#10b981",
+                              },
+                            ]}
+                            value={p.price}
+                            keyboardType="numeric"
+                            onChangeText={(t) =>
+                              updatePriceTierField(
+                                vIndex,
+                                pIndex,
+                                "price",
+                                t
+                              )
+                            }
+                          />
+                        </View>
+                        <View style={{ width: 60 }}>
+                          <Text style={styles.tinyLabel}>Disc%</Text>
+                          <View style={styles.readOnlyBadge}>
+                            <Text style={styles.readOnlyText}>
+                              {p.discount}%
+                            </Text>
+                          </View>
+                        </View>
+                        {v.sellingPrices.length > 1 && (
+                          <TouchableOpacity
+                            onPress={() =>
+                              removePriceTier(vIndex, pIndex)
+                            }
+                            style={{ marginTop: 18 }}
+                          >
+                            <Ionicons
+                              name="close-circle"
+                              size={24}
+                              color="#ef4444"
+                            />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    ))}
+                    <TouchableOpacity
+                      onPress={() => addPriceTier(vIndex)}
+                      style={styles.textLinkButton}
+                    >
+                      <Text style={styles.textLink}>+ Add Bulk Tier</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Variant Images */}
+                  <View style={{ marginTop: 16 }}>
+                    <View style={styles.rowBetween}>
+                      <Text style={styles.label}>Variant Images</Text>
+                      <TouchableOpacity
+                        onPress={() => pickVariantImages(vIndex)}
+                      >
+                        <Text style={styles.textLink}>+ Upload</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={{ marginTop: 8 }}
+                    >
+                      {v.images.map((img, idx) => (
+                        <View key={idx} style={styles.variantThumbBox}>
+                          <Image
+                            source={{ uri: img.uri }}
+                            style={styles.variantThumb}
+                          />
+                          <TouchableOpacity
+                            onPress={() =>
+                              removeVariantImage(vIndex, idx)
+                            }
+                            style={styles.removeThumbBtn}
+                          >
+                            <Ionicons
+                              name="close"
+                              size={12}
+                              color="white"
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  </View>
+                </View>
+              )}
+            </View>
+          ))}
+
+          {/* 4. Settings */}
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <View style={[styles.iconBox, { backgroundColor: "#dcfce7" }]}>
+                <Text>⚙️</Text>
+              </View>
+              <Text style={styles.cardTitle}>Settings & Delivery</Text>
+            </View>
+
+            <View style={styles.settingRow}>
+              <View>
+                <Text style={styles.settingLabel}>Order Cancellation</Text>
+                <Text style={styles.settingSub}>
+                  Can customers cancel orders?
+                </Text>
+              </View>
               <Switch
-                value={v.isActive}
-                onValueChange={(val) =>
-                  updateVariantField(vIndex, "isActive", val)
-                }
-                trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-                thumbColor="#ffffff"
+                value={deliveryCancel}
+                onValueChange={setDeliveryCancel}
+                trackColor={{ true: "#10b981" }}
               />
             </View>
-
-            <Text style={[styles.label, { marginTop: 12 }]}>
-              Selling Prices
-            </Text>
-            {v.sellingPrices.map((p, pIndex) => (
-              <View key={pIndex} style={styles.priceRow}>
-                <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={styles.smallLabel}>Min Qty</Text>
-                  <TextInput
-                    style={styles.inputSm}
-                    keyboardType="numeric"
-                    value={p.minQuantity}
-                    onChangeText={(t) =>
-                      updatePriceTierField(vIndex, pIndex, "minQuantity", t)
-                    }
-                    placeholder="1"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-
-                <View style={{ flex: 1, marginRight: 6 }}>
-                  <Text style={styles.smallLabel}>Price</Text>
-                  <TextInput
-                    style={styles.inputSm}
-                    keyboardType="numeric"
-                    value={p.price}
-                    onChangeText={(t) =>
-                      updatePriceTierField(vIndex, pIndex, "price", t)
-                    }
-                    placeholder="249"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.smallLabel}>Discount %</Text>
-                  <TextInput
-                    style={styles.inputSm}
-                    keyboardType="numeric"
-                    value={p.discount}
-                    onChangeText={(t) =>
-                      updatePriceTierField(vIndex, pIndex, "discount", t)
-                    }
-                    placeholder="10"
-                    placeholderTextColor="#9ca3af"
-                  />
-                </View>
-
-                {v.sellingPrices.length > 1 && (
-                  <TouchableOpacity
-                    onPress={() => removePriceTier(vIndex, pIndex)}
-                    style={{ marginLeft: 4, marginTop: 20 }}
-                  >
-                    <Text style={styles.removeText}>X</Text>
-                  </TouchableOpacity>
-                )}
+            <View style={styles.divider} />
+            <View style={styles.settingRow}>
+              <View>
+                <Text style={styles.settingLabel}>Returnable</Text>
+                <Text style={styles.settingSub}>
+                  Is this product returnable?
+                </Text>
               </View>
-            ))}
-
-            <TouchableOpacity
-              onPress={() => addPriceTier(vIndex)}
-              style={styles.smallButton}
-            >
-              <Text style={styles.smallButtonText}>+ Add Price Tier</Text>
-            </TouchableOpacity>
-
-            <Text style={[styles.label, { marginTop: 12 }]}>Images</Text>
-            <TouchableOpacity
-              style={styles.smallButton}
-              onPress={() => pickVariantImages(vIndex)}
-            >
-              <Text style={styles.smallButtonText}>Upload Variant Images</Text>
-            </TouchableOpacity>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={{ marginTop: 8 }}
-            >
-              {v.images.map((img, idx) => (
-                <Image
-                  key={idx}
-                  source={{ uri: img.uri }}
-                  style={styles.variantImage}
-                />
-              ))}
-            </ScrollView>
+              <Switch
+                value={deliveryReturnable}
+                onValueChange={setDeliveryReturnable}
+                trackColor={{ true: "#10b981" }}
+              />
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.settingRow}>
+              <View>
+                <Text style={styles.settingLabel}>Global Visibility</Text>
+                <Text style={styles.settingSub}>
+                  Show in app immediately?
+                </Text>
+              </View>
+              <Switch
+                value={isActive}
+                onValueChange={setIsActive}
+                trackColor={{ true: "#6366f1" }}
+              />
+            </View>
           </View>
-        ))}
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Delivery Options</Text>
+          {/* Submit Button */}
+          <TouchableOpacity
+            style={[styles.submitButton, isLoading && { opacity: 0.7 }]}
+            onPress={handleSubmit}
+            disabled={isLoading}
+          >
+            <LinearGradient
+              colors={["#6366f1", "#4338ca"]}
+              style={styles.submitGradient}
+            >
+              <Text style={styles.submitText}>
+                {isLoading ? "Saving..." : "Create Product"}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
 
-        <View style={styles.toggleRow}>
-          <Text style={styles.label}>Can Cancel</Text>
-          <Switch
-            value={deliveryCancel}
-            onValueChange={setDeliveryCancel}
-            trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-            thumbColor="#ffffff"
-          />
-        </View>
-
-        <View style={styles.toggleRow}>
-          <Text style={styles.label}>Returnable</Text>
-          <Switch
-            value={deliveryReturnable}
-            onValueChange={setDeliveryReturnable}
-            trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-            thumbColor="#ffffff"
-          />
-        </View>
-
-        <View style={styles.toggleRow}>
-          <Text style={styles.label}>Warranty</Text>
-          <Switch
-            value={deliveryWarranty}
-            onValueChange={setDeliveryWarranty}
-            trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-            thumbColor="#ffffff"
-          />
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.toggleRow}>
-          <Text style={styles.label}>Product Active</Text>
-          <Switch
-            value={isActive}
-            onValueChange={setIsActive}
-            trackColor={{ false: "#d1d5db", true: "#22c55e" }}
-            thumbColor="#ffffff"
-          />
-        </View>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.submitButton, isLoading && { opacity: 0.7 }]}
-        onPress={handleSubmit}
-        disabled={isLoading}
-      >
-        <Text style={styles.submitButtonText}>
-          {isLoading ? "Creating..." : "Create Product"}
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
 export default CreateProductScreen;
 
-// ----- styles -----
+// ----- Styles -----
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f3f4f6",
-    paddingHorizontal: 16,
+    backgroundColor: "#F8FAFC",
   },
-  title: {
-    fontSize: 26,
-    fontWeight: "700",
-    color: "#111827",
-    marginTop: 16,
+  scrollContent: {
+    paddingBottom: 40,
   },
-  subtitle: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginBottom: 16,
+  headerGradient: {
+    paddingTop: Platform.OS === "ios" ? 60 : 50,
+    paddingBottom: 25,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  backButton: {
+    marginRight: 16,
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#ffffff",
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: "#e0e7ff",
+    marginTop: 2,
   },
   card: {
     backgroundColor: "#ffffff",
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    shadowColor: "#64748b",
     shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  sectionTitle: {
+  cardTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  cardTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 10,
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  inputGroup: {
+    marginBottom: 16,
   },
   label: {
     fontSize: 13,
-    color: "#4b5563",
-    marginTop: 8,
-    marginBottom: 4,
+    fontWeight: "600",
+    color: "#475569",
+    marginBottom: 6,
   },
   input: {
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#e2e8f0",
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    color: "#111827",
-    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: "#0f172a",
   },
-  pickerWrapper: {
+  textArea: {
+    height: 100,
+  },
+  row: {
+    flexDirection: "row",
+  },
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  pickerContainer: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#e2e8f0",
     borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#ffffff",
+    backgroundColor: "#fff",
+    height: 50,
+    justifyContent: "center",
   },
   picker: {
-    color: "#111827",
-    height: 52,
-  },
-  toggleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  thumbnailButton: {
-    marginTop: 6,
-    backgroundColor: "#2563eb",
-    borderRadius: 999,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  thumbnailButtonText: {
-    color: "#f9fafb",
-    fontWeight: "600",
-    fontSize: 14,
-  },
-  thumbnailPreview: {
-    marginTop: 10,
+    height: 50,
     width: "100%",
-    height: 180,
-    borderRadius: 16,
+    color: "#000",
   },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  thumbnailUploadArea: {
+    height: 200,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    borderStyle: "dashed",
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+    justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
   },
-  addLink: {
-    color: "#2563eb",
-    fontWeight: "600",
-    fontSize: 13,
+  fullWidthImageContainer: {
+    width: "100%",
+    height: "100%",
   },
-  variantCard: {
-    marginTop: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: 12,
-    backgroundColor: "#f9fafb",
+  thumbnailImage: {
+    width: "100%",
+    height: "100%",
   },
-  variantHeaderRow: {
+  editImageBadge: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
+    gap: 4,
   },
-  variantTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-  removeText: {
-    color: "#ef4444",
+  editImageText: {
+    color: "white",
     fontSize: 12,
     fontWeight: "600",
   },
-  priceRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 6,
+  uploadPlaceholder: {
+    alignItems: "center",
   },
-  smallLabel: {
-    fontSize: 11,
-    color: "#6b7280",
-    marginBottom: 2,
+  uploadText: {
+    marginTop: 10,
+    color: "#94a3b8",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  sectionHeaderText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#334155",
+  },
+  addVariantButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#6366f1",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+  },
+  addVariantButtonText: {
+    color: "white",
+    fontWeight: "600",
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  variantCard: {
+    padding: 0,
+    overflow: "hidden",
+  },
+  variantHeader: {
+    padding: 16,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+  variantHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  variantNumberBadge: {
+    backgroundColor: "#6366f1",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  inactiveBadge: {
+    backgroundColor: "#94a3b8",
+  },
+  variantNumberText: {
+    color: "white",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  variantTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  variantSubtitle: {
+    fontSize: 12,
+    color: "#64748b",
+  },
+  variantBody: {
+    padding: 16,
+    backgroundColor: "#f8fafc",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#e2e8f0",
+    marginVertical: 12,
+  },
+  iconButton: {
+    padding: 4,
+  },
+  subLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#64748b",
+    marginBottom: 8,
+    marginTop: 8,
+    textTransform: "uppercase",
+  },
+  measurementRow: {
+    flexDirection: "column",
+    // alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
   },
   inputSm: {
     backgroundColor: "#ffffff",
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    color: "#111827",
-    fontSize: 13,
-  },
-  smallButton: {
-    marginTop: 8,
-    alignSelf: "flex-start",
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    height: 50,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
+    fontSize: 14,
+    color: "#000",
+  },
+  measurementPickerWrapper: {
+    flex: 1.2,
     borderWidth: 1,
-    borderColor: "#2563eb",
-  },
-  smallButtonText: {
-    color: "#2563eb",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  variantImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 12,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-  },
-  submitButton: {
-    marginTop: 4,
-    marginBottom: 24,
-    backgroundColor: "#22c55e",
-    borderRadius: 999,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  submitButtonText: {
-    color: "#064e3b",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  measurementRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginTop: 4,
-  },
-  pickerWrapperSm: {
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 10,
-    overflow: "hidden",
-    backgroundColor: "#ffffff",
-    // textAlign:"center",
-    // color:"black",
-    height:35,
-    display:"flex",
-    justifyContent:"center",
-    // alignItems:"baseline"
+    borderColor: "#cbd5e1",
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    height: 50,
+    justifyContent: "center",
   },
   pickerSm: {
-    color: "#111827",
-    marginTop:0
-    // height: 30,
+    height: 50,
+    color: "#000",
+  },
+  pricingContainer: {
+    backgroundColor: "white",
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    marginTop: 12,
+  },
+  priceRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 10,
+  },
+  tinyLabel: {
+    fontSize: 10,
+    color: "#94a3b8",
+    marginBottom: 2,
+  },
+  inputXs: {
+    backgroundColor: "#f1f5f9",
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    fontSize: 13,
+    color: "#334155",
+  },
+  readOnlyBadge: {
+    backgroundColor: "#dcfce7",
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+  readOnlyText: {
+    color: "#166534",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  textLinkButton: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+  },
+  textLink: {
+    color: "#6366f1",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  variantThumbBox: {
+    marginRight: 10,
+    position: "relative",
+  },
+  variantThumb: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  removeThumbBtn: {
+    position: "absolute",
+    top: 0,
+    right: -6,
+    backgroundColor: "#ef4444",
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "white",
+  },
+  settingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  settingLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1e293b",
+  },
+  settingSub: {
+    fontSize: 12,
+    color: "#94a3b8",
+  },
+  submitButton: {
+    marginHorizontal: 16,
+    borderRadius: 16,
+    shadowColor: "#6366f1",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  submitGradient: {
+    paddingVertical: 16,
+    borderRadius: 16,
+    alignItems: "center",
+  },
+  submitText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
   },
 });

@@ -291,7 +291,7 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
 
   const { data: orders, isLoading, refetch } = useOrders({ status, from, to });
 
-  console.log(orders)
+  // console.log(orders)
   const handleResetFilters = () => {
     setStatus('all');
     setRange('recent');

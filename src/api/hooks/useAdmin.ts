@@ -12,7 +12,7 @@ export interface AdminProfile {
 }
 
 export const useAdminProfile = () => {
-  console.log("useradmun")
+  // console.log("useradmun")
   return useQuery<AdminProfile>({
     queryKey: ["admin-profile"],
     queryFn: async () => {
@@ -166,6 +166,8 @@ interface CreateAdminProductArgs {
 export const useCreateAdminProduct = () => {
   return useMutation({
     mutationFn: async ({ formData }: CreateAdminProductArgs) => {
+      console.log(formData)
+    
       const res = await api.post("/admin/products", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
@@ -180,13 +182,13 @@ export const useCreateAdminProduct = () => {
 
 
 export const useGetProductDetail = (id: string) => {
-  console.log(id)
+  // console.log(id)
   return useQuery({
     queryKey: ['admin-product-detail', id],
     enabled: !!id,
     queryFn: async () => {
       const res = await api.get(`/admin/products/${id}`);
-      console.log(res.data)
+      // console.log(res.data)
       return res?.data?.product||"No"; // this will be your full product doc
     },
   });
