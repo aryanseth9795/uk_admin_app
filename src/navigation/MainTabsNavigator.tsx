@@ -47,6 +47,7 @@
 import React from 'react';
 import { Platform, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { getFocusedRouteNameFromRoute } from '@react-navigation/native';
 import { OrdersNavigator } from './OrdersNavigator';
 import { ProductsNavigator } from './ProductsNavigator';
 import { ControlsNavigator } from './ControlsNavigator';
@@ -68,35 +69,63 @@ export type MainTabsParamList = {
 
 const Tab = createBottomTabNavigator<MainTabsParamList>();
 
+// Helper function to determine if tab bar should be visible
+const getTabBarVisibility = (route: any) => {
+  const routeName = getFocusedRouteNameFromRoute(route);
+  
+  // List of screens where tab bar should be hidden
+  const hideTabBarScreens = [
+    // Products stack detail screens
+    'ProductDetail',
+    'ProductForm',
+    'CategoryForm',
+    'SubCategoryForm',
+    'SubSubCategoryForm',
+    // Orders stack detail screens
+    'OrderDetail',
+    // Controls stack detail screens
+    'Reports',
+    'StocksOverview',
+    'StockList',
+    'Users',
+    'AdminDetails',
+    'AdminEdit',
+  ];
+
+  if (routeName && hideTabBarScreens.includes(routeName)) {
+    return { display: 'none' as 'none' };
+  }
+
+  return {
+    backgroundColor: THEME.background,
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
+    height: Platform.OS === 'ios' ? 85 : 60,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 5,
+    paddingTop: 6,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  };
+};
+
 export const MainTabsNavigator: React.FC = () => {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        // 1. Clean White Background with soft Shadow (Matches Card style)
-        tabBarStyle: {
-          backgroundColor: THEME.background,
-          borderTopWidth: 1,
-          borderTopColor: THEME.border,
-          height: Platform.OS === 'ios' ? 85 : 60,
-          paddingBottom: Platform.OS === 'ios' ? 28 : 5,
-          paddingTop: 6,
-          elevation: 8, // Android Shadow
-          shadowColor: '#000', // iOS Shadow
-          shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.05,
-          shadowRadius: 4,
-        },
-        // 2. Typography Settings
+        // Typography Settings
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '600',
           marginBottom: 0,
         },
-        // 3. Theme Colors
+        // Theme Colors
         tabBarActiveTintColor: THEME.primary,
         tabBarInactiveTintColor: THEME.inactive,
-        // 4. Icon Logic
+        // Icon Logic
         tabBarIcon: ({ color, size, focused }) => {
           let iconName: keyof typeof Ionicons.glyphMap = 'list-outline';
           
@@ -116,17 +145,26 @@ export const MainTabsNavigator: React.FC = () => {
       <Tab.Screen 
         name="ProductsTab" 
         component={ProductsNavigator} 
-        options={{ title: 'Products' }} 
+        options={({ route }) => ({
+          title: 'Products',
+          tabBarStyle: getTabBarVisibility(route),
+        })} 
       />
       <Tab.Screen 
         name="OrdersTab" 
         component={OrdersNavigator} 
-        options={{ title: 'Orders' }} 
+        options={({ route }) => ({
+          title: 'Orders',
+          tabBarStyle: getTabBarVisibility(route),
+        })} 
       />
       <Tab.Screen 
         name="ControlsTab" 
         component={ControlsNavigator} 
-        options={{ title: 'Controls' }} 
+        options={({ route }) => ({
+          title: 'Controls',
+          tabBarStyle: getTabBarVisibility(route),
+        })} 
       />
     </Tab.Navigator>
   );

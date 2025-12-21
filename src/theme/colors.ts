@@ -1,63 +1,63 @@
-export type ThemeMode = 'light' | 'dark';
+// src/theme/colors.ts
+export type ThemeMode = "light" | "dark";
 
-const lightColors = {
-  // Light yellowish Blinkit-like theme
-  bg: '#FFF9E6', // main app background
-  card: '#FFFFFF',
-  border: '#FACC6B',
-  text: '#1F2933',
-  muted: '#6B7280',
-  header: '#F59E0B',
-  tint: '#F97316',
-  tintLight: '#FFEDD5',
-  chipBg: '#FFF4D6',
-  chipBorder: '#FDE68A',
-  danger: '#DC2626',
-  // top safe-area / status bar background
-  statusBar: '#FFF4D6',
-} as const;
-
-const darkColors = {
-  // Simple dark counterpart using same keys
-  bg: '#020617',
-  card: '#0f172a',
-  border: '#1f2937',
-  text: '#F9FAFB',
-  muted: '#9CA3AF',
-  header: '#FB923C',
-  tint: '#FDBA74',
-  tintLight: '#4B5563',
-  chipBg: '#111827',
-  chipBorder: '#374151',
-  danger: '#F87171',
-  statusBar: '#020617',
-} as const;
-
-let currentMode: ThemeMode = 'light';
-
-export const colors: {
+export type ColorPalette = {
   bg: string;
-  card: string;
-  border: string;
+  bgSoft: string;
+  bgElevated: string;
+  primary: string;
+  primarySoft: string;
+  accent: string;
   text: string;
+  textMuted: string;
   muted: string;
-  header: string;
-  tint: string;
-  tintLight: string;
-  chipBg: string;
-  chipBorder: string;
+  border: string;
   danger: string;
-  statusBar: string;
-} = { ...lightColors };
-
-/**
- * Imperatively switch the runtime color palette while keeping the same "colors" shape.
- * Existing components read from this object and will see updated values on re-render.
- */
-export const setThemeMode = (mode: ThemeMode) => {
-  currentMode = mode;
-  const palette = mode === 'dark' ? darkColors : lightColors;
-  Object.assign(colors, palette);
+  success: string;
+  warning: string;
+  header: string;
 };
 
-export const getThemeMode = (): ThemeMode => currentMode;
+export const lightColors: ColorPalette = {
+  bg: "#F5F3FF",            // page background (soft violet)
+  bgSoft: "#EEF2FF",        // sections, soft cards
+  bgElevated: "#FFFFFF",    // cards, modals
+  primary: "#6366F1",       // main violet (matches logo/splash vibe)
+  primarySoft: "rgba(99,102,241,0.12)",
+  accent: "#8B5CF6",
+  text: "#0F172A",
+  textMuted: "#6B7280",
+  muted: "#6B7280",
+  border: "#E5E7EB",
+  danger: "#EF4444",
+  success: "#10B981",
+  warning: "#F59E0B",
+  header: "#0F172A",        // header/emphasized text
+};
+
+export const darkColors: ColorPalette = {
+  bg: "#020617",
+  bgSoft: "#0F172A",
+  bgElevated: "#020617",
+  primary: "#818CF8",
+  primarySoft: "rgba(129,140,248,0.16)",
+  accent: "#A855F7",
+  text: "#F9FAFB",
+  textMuted: "#9CA3AF",
+  muted: "#9CA3AF",
+  border: "#1F2937",
+  danger: "#F97373",
+  success: "#34D399",
+  warning: "#FBBF24",
+  header: "#F9FAFB",        // header/emphasized text
+};
+
+export let colors: ColorPalette = lightColors;
+let currentMode: ThemeMode = "light";
+
+export const setThemeMode = (mode: ThemeMode) => {
+  currentMode = mode;
+  colors = mode === "dark" ? darkColors : lightColors;
+};
+
+export const getThemeMode = () => currentMode;

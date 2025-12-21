@@ -163,12 +163,13 @@ interface CreateAdminProductArgs {
   formData: FormData; // for real API (Multer + Cloudinary)
 }
 
-export const useCreateAdminProduct = () => {
+export const 
+useCreateAdminProduct = () => {
   return useMutation({
     mutationFn: async ({ formData }: CreateAdminProductArgs) => {
       console.log(formData)
     
-      const res = await api.post("/admin/products", formData, {
+      const res = await api.post("/admin/addproduct", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
@@ -190,6 +191,46 @@ export const useGetProductDetail = (id: string) => {
       const res = await api.get(`/admin/products/${id}`);
       // console.log(res.data)
       return res?.data?.product||"No"; // this will be your full product doc
+    },
+  });
+};
+
+/* -------- Stock Update -------- */
+export interface UpdateStockPayload {
+  productId: string;
+  variantId: string;
+  quantity: number;
+}
+
+export const useUpdateStock = () => {
+  return useMutation({
+    mutationFn: async (payload: UpdateStockPayload) => {
+      const res = await api.post("/admin/stockproduct", payload);
+      return res.data;
+    },
+  });
+};
+
+/* -------- Delete Product -------- */
+export const useDeleteProduct = () => {
+  return useMutation({
+    mutationFn: async (productId: string) => {
+      const res = await api.delete(`/admin/product/${productId}`);
+      return res.data;
+    },
+  });
+};
+
+/* -------- Update Product -------- */
+export const useUpdateProduct = () => {
+  return useMutation({
+    mutationFn: async ({ productId, formData }: { productId: string; formData: FormData }) => {
+      const res = await api.put(`/admin/product/${productId}`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+      return res.data;
     },
   });
 };

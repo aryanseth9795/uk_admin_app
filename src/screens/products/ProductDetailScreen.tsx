@@ -9,6 +9,9 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   Dimensions,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
@@ -17,7 +20,7 @@ import { colors } from '@/theme/colors';
 import { spacing } from '@/theme/theme';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { Image } from 'expo-image';
-import { useGetProductDetail } from '@/api/hooks/useAdmin';
+import { useGetProductDetail, useUpdateStock, useDeleteProduct } from '@/api/hooks/useAdmin';
 
 type Props = NativeStackScreenProps<ProductsStackParamList, 'ProductDetail'>;
 
@@ -30,9 +33,15 @@ export const ProductDetailScreen: React.FC<Props> = ({ route, navigation }) => {
   const { productId } = route.params;
   const { data, isLoading, isError } = useGetProductDetail(productId);
   const product = data as any;
-
+console.log(product)
   const [selectedVariantIndex, setSelectedVariantIndex] = useState(0);
   const [imageIndex, setImageIndex] = useState(0);
+  const [showStockModal, setShowStockModal] = useState(false);
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [stockQuantity, setStockQuantity] = useState('');
+  
+  const updateStockMutation = useUpdateStock();
+  const deleteProductMutation = useDeleteProduct();
 
   const selectedVariant = useMemo(() => {
     if (!product?.variants || product.variants.length === 0) return undefined;
@@ -134,7 +143,7 @@ export const ProductDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         {/* Header */}
         <View style={styles.headerRow}>
           <Pressable style={styles.backRow} onPress={() => navigation.goBack()}>
-            <Feather name="arrow-left" size={18} color={colors.tint} />
+            <Feather name="arrow-left" size={18} color={colors.primary} />
             <Text style={styles.backText}>Back</Text>
           </Pressable>
           <Text style={styles.heading}>Product Detail</Text>
@@ -144,7 +153,7 @@ export const ProductDetailScreen: React.FC<Props> = ({ route, navigation }) => {
         {/* Loading */}
         {isLoading && (
           <View style={styles.center}>
-            <ActivityIndicator color={colors.tint} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         )}
 
@@ -489,29 +498,229 @@ export const ProductDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             {/* Bottom buttons */}
             <View style={styles.bottomBar}>
               <Pressable
-                style={styles.bottomBtn}
-                onPress={() => {
-                  console.log('Edit pressed');
-                }}
+                style={styles.editBtn}
+                onPress={() => setShowActionSheet(true)}
               >
-                <Feather name="edit-3" size={16} color={colors.text} />
-                <Text style={styles.bottomBtnText}>Edit</Text>
+                <Feather name="more-horizontal" size={22} color={colors.text} />
+                <Text style={styles.editBtnText}>Actions</Text>
               </Pressable>
 
               <Pressable
-                style={[styles.bottomBtn, styles.bottomBtnPrimary]}
+                style={styles.stockBtn}
                 onPress={() => {
-                  console.log('Stock+ pressed');
+                  setStockQuantity(stock.toString());
+                  setShowStockModal(true);
                 }}
               >
-                <Feather name="plus-square" size={16} color="#fff" />
-                <Text
-                  style={[styles.bottomBtnText, styles.bottomBtnTextPrimary]}
-                >
-                  Stock +
-                </Text>
+                <Feather name="trending-up" size={22} color="#fff" />
+                <Text style={styles.stockBtnText}>Update Stock</Text>
               </Pressable>
             </View>
+
+            {/* Stock Update Modal */}
+            <Modal
+              visible={showStockModal}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowStockModal(false)}
+            >
+              <Pressable 
+                style={styles.modalOverlay}
+                onPress={() => setShowStockModal(false)}
+              >
+                <Pressable 
+                  style={styles.stockModalContent}
+                  onPress={(e) => e.stopPropagation()}
+                >
+                  <View style={styles.modalHeader}>
+                    <Feather name="package" size={28} color={colors.primary} />
+                    <View style={{ flex: 1, marginLeft: spacing.md }}>
+                      <Text style={styles.modalTitle}>Update Stock</Text>
+                      <Text style={styles.modalSubtitle}>{product.name}</Text>
+                    </View>
+                    <Pressable
+                      onPress={() => setShowStockModal(false)}
+                      style={styles.modalCloseBtn}
+                    >
+                      <Feather name="x" size={24} color={colors.muted} />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.modalBody}>
+                    {/* Current Stock Info */}
+                    <View style={styles.stockInfoCard}>
+                      <View style={styles.stockInfoRow}>
+                        <Text style={styles.stockInfoLabel}>Current Variant</Text>
+                        <Text style={styles.stockInfoValue}>{variantLabel}</Text>
+                      </View>
+                      <View style={styles.stockInfoDivider} />
+                      <View style={styles.stockInfoRow}>
+                        <Text style={styles.stockInfoLabel}>Available Stock</Text>
+                        <Text style={styles.stockInfoValue}>{stock} units</Text>
+                      </View>
+                    </View>
+
+                    {/* Stock Input */}
+                    <View style={styles.inputContainer}>
+                      <Text style={styles.inputLabel}>Add Quantity</Text>
+                      <TextInput
+                        style={styles.stockInput}
+                        value={stockQuantity}
+                        onChangeText={setStockQuantity}
+                        keyboardType="numeric"
+                        placeholder="Enter quantity to add"
+                        placeholderTextColor={colors.muted}
+                      />
+                      <Text style={styles.inputHint}>
+                        New total: {stock + (parseInt(stockQuantity) || 0)} units
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <Pressable
+                      style={styles.modalBtnSecondary}
+                      onPress={() => setShowStockModal(false)}
+                    >
+                      <Text style={styles.modalBtnSecondaryText}>Cancel</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.modalBtnPrimary}
+                      onPress={async () => {
+                        const quantity = parseInt(stockQuantity);
+                        if (!quantity || quantity <= 0) {
+                          Alert.alert('Invalid Quantity', 'Please enter a valid quantity');
+                          return;
+                        }
+                        
+                        try {
+                          await updateStockMutation.mutateAsync({
+                            productId,
+                            variantId: selectedVariant._id,
+                            quantity,
+                          });
+                          
+                          Alert.alert(
+                            'Success',
+                            `Stock updated successfully! Added ${quantity} units.`,
+                            [{ text: 'OK', onPress: () => setShowStockModal(false) }]
+                          );
+                        } catch (error) {
+                          Alert.alert('Error', 'Failed to update stock. Please try again.');
+                        }
+                      }}
+                      disabled={updateStockMutation.isPending}
+                    >
+                      {updateStockMutation.isPending ? (
+                        <ActivityIndicator color="#fff" size="small" />
+                      ) : (
+                        <Text style={styles.modalBtnPrimaryText}>Update Stock</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                </Pressable>
+              </Pressable>
+            </Modal>
+
+            {/* Action Sheet Modal */}
+            <Modal
+              visible={showActionSheet}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowActionSheet(false)}
+            >
+              <Pressable 
+                style={styles.sheetOverlay}
+                onPress={() => setShowActionSheet(false)}
+              >
+                <Pressable 
+                  style={styles.sheetContent}
+                  onPress={(e) => e.stopPropagation()}
+                >
+                  <View style={styles.sheetHandle} />
+                  
+                  <Text style={styles.sheetTitle}>Product Actions</Text>
+                  
+                  <View style={styles.sheetActions}>
+                    {/* Edit Product */}
+                    <Pressable
+                      style={styles.sheetActionItem}
+                      onPress={() => {
+                        setShowActionSheet(false);
+                        navigation.navigate('ProductForm', { productId });
+                      }}
+                    >
+                      <View style={[styles.sheetActionIcon, styles.sheetActionIconEdit]}>
+                        <Feather name="edit-3" size={22} color={colors.primary} />
+                      </View>
+                      <View style={styles.sheetActionContent}>
+                        <Text style={styles.sheetActionTitle}>Edit Product</Text>
+                        <Text style={styles.sheetActionSubtitle}>
+                          Update details, images, variants
+                        </Text>
+                      </View>
+                      <Feather name="chevron-right" size={20} color={colors.muted} />
+                    </Pressable>
+
+                    <View style={styles.sheetActionDivider} />
+
+                    {/* Delete Product */}
+                    <Pressable
+                      style={styles.sheetActionItem}
+                      onPress={() => {
+                        setShowActionSheet(false);
+                        Alert.alert(
+                          'Delete Product',
+                          `Are you sure you want to delete "${product.name}"? This action cannot be undone.`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Delete',
+                              style: 'destructive',
+                              onPress: async () => {
+                                try {
+                                  await deleteProductMutation.mutateAsync(productId);
+                                  Alert.alert(
+                                    'Success',
+                                    'Product deleted successfully',
+                                    [{
+                                      text: 'OK',
+                                      onPress: () => navigation.goBack()
+                                    }]
+                                  );
+                                } catch (error) {
+                                  Alert.alert('Error', 'Failed to delete product. Please try again.');
+                                }
+                              },
+                            },
+                          ]
+                        );
+                      }}
+                    >
+                      <View style={[styles.sheetActionIcon, styles.sheetActionIconDelete]}>
+                        <Feather name="trash-2" size={22} color="#ef4444" />
+                      </View>
+                      <View style={styles.sheetActionContent}>
+                        <Text style={[styles.sheetActionTitle, styles.sheetActionTitleDanger]}>
+                          Delete Product
+                        </Text>
+                        <Text style={styles.sheetActionSubtitle}>
+                          Permanently remove this product
+                        </Text>
+                      </View>
+                      <Feather name="chevron-right" size={20} color={colors.muted} />
+                    </Pressable>
+                  </View>
+
+                  <Pressable
+                    style={styles.sheetCancelBtn}
+                    onPress={() => setShowActionSheet(false)}
+                  >
+                    <Text style={styles.sheetCancelText}>Cancel</Text>
+                  </Pressable>
+                </Pressable>
+              </Pressable>
+            </Modal>
           </>
         )}
       </View>
@@ -553,7 +762,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   backText: {
-    color: colors.tint,
+    color: colors.primary,
     fontSize: 14,
   },
   heading: {
@@ -650,7 +859,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     marginBottom: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bgElevated,
   },
   priceStripLeft: {
     flexDirection: 'row',
@@ -692,7 +901,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bgElevated,
   },
   sectionHeading: {
     fontSize: 15,
@@ -743,7 +952,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bgElevated,
   },
   discountHeaderRow: {
     flexDirection: 'row',
@@ -786,7 +995,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.lg,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bgElevated,
   },
   detailRow: {
     flexDirection: 'row',
@@ -844,36 +1053,281 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingHorizontal: 10,
+    paddingTop: 5,
+    paddingBottom: 8,
     flexDirection: 'row',
-    gap: spacing.sm,
-    backgroundColor: "transparent",
-    // borderTopWidth: 1,
-    borderTopColor: colors.border,
+    gap: spacing.md,
+    backgroundColor: '#ffffff',
+    // backgroundColor: "transparent",
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  bottomBtn: {
+
+  // Edit Button (Secondary)
+  editBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    borderRadius: 999,
+    paddingVertical: 18,
+    borderRadius: 12,
+    backgroundColor: '#f9fafb',
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#f8fafc',
+    borderColor: '#e5e7eb',
+    gap: 8,
   },
-  bottomBtnPrimary: {
-    backgroundColor: colors.header,
-    borderColor: colors.header,
-  },
-  bottomBtnText: {
-    fontSize: 14,
+  editBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: colors.text,
+  },
+
+  // Stock Button (Primary)
+  stockBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    gap: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  stockBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+
+  // Stock Update Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  stockModalContent: {
+    width: '100%',
+    maxWidth: 450,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.3,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#fafbfc',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+  },
+  stockInfoCard: {
+    backgroundColor: '#f8f9fc',
+    borderRadius: 12,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: '#e8ecf4',
+  },
+  stockInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  stockInfoLabel: {
+    fontSize: 14,
+    color: colors.muted,
     fontWeight: '500',
   },
-  bottomBtnTextPrimary: {
-    color: '#fff',
+  stockInfoValue: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  stockInfoDivider: {
+    height: 1,
+    backgroundColor: '#e0e4eb',
+    marginVertical: 4,
+  },
+  inputContainer: {
+    gap: 8,
+  },
+  inputLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  stockInput: {
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: colors.text,
+    backgroundColor: '#ffffff',
+  },
+  inputHint: {
+    fontSize: 13,
+    color: colors.primary,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  modalBtnSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnSecondaryText: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  modalBtnPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnPrimaryText: {
+    fontSize: 15,
+    color: '#ffffff',
+    fontWeight: '600',
+  },
+
+  // Action Sheet
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheetContent: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: spacing.xl,
+    maxHeight: '80%',
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#cbd5e1',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: spacing.md,
+  },
+  sheetTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  sheetActions: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+  },
+  sheetActionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: 14,
+    backgroundColor: '#f8f9fc',
+    gap: spacing.md,
+  },
+  sheetActionIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetActionIconEdit: {
+    backgroundColor: `${colors.primary}15`,
+  },
+  sheetActionIconDelete: {
+    backgroundColor: '#fee2e2',
+  },
+  sheetActionContent: {
+    flex: 1,
+  },
+  sheetActionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  sheetActionTitleDanger: {
+    color: '#ef4444',
+  },
+  sheetActionSubtitle: {
+    fontSize: 13,
+    color: colors.muted,
+  },
+  sheetActionDivider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+    marginVertical: 4,
+  },
+  sheetCancelBtn: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.lg,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  sheetCancelText: {
+    fontSize: 16,
+    color: colors.text,
+    fontWeight: '600',
   },
 });

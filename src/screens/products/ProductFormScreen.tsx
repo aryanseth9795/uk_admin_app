@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,92 +12,22 @@ import {
   Platform,
   KeyboardAvoidingView,
   LayoutAnimation,
+  Modal,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import * as ImagePicker from "expo-image-picker";
-import { useCreateAdminProduct } from "../../api/hooks/useAdmin";
+import { useCreateAdminProduct, useGetProductDetail, useUpdateProduct } from "../../api/hooks/useAdmin";
+import { useCategories, useSubCategories, useSubSubCategories, Category, SubCategory, SubSubCategory } from "../../api/hooks/useCategory";
 import Toast from "react-native-toast-message";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { ProductsStackParamList } from "@/navigation/ProductsNavigator";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
 // ----- Constants & Enums -----
-
-const CATEGORY_OPTIONS = [
-  "beauty & cosmetics",
-  "general_store",
-  "gifts",
-] as const;
-
-const SUBCATEGORY_OPTIONS = [
-  "beauty_skincare",
-  "beauty_haircare",
-  "beauty_bath_body",
-  "beauty_fragrances",
-  "beauty_men_grooming",
-  "beauty_tools_accessories",
-  "cosmetics_face",
-  "cosmetics_eyes",
-  "cosmetics_lips",
-  "cosmetics_nails",
-  "cosmetics_kits_combos",
-  "general_groceries",
-  "general_household_supplies",
-  "general_home_cleaning",
-  "general_paper_disposables",
-  "general_pooja_items",
-  "general_stationery",
-  "general_pet_care",
-  "general_baby_care",
-  "general_snacks_beverages",
-  "general_dairy_bakery",
-  "gifts_soft_toys",
-  "gifts_chocolates_sweets",
-  "gifts_flowers_plants",
-  "gifts_decor_showpieces",
-  "gifts_greeting_cards",
-  "gifts_mugs_bottles",
-  "gifts_photo_frames",
-  "gifts_hampers",
-  "gifts_festive_gifts",
-] as const;
-
-const SUBSUBCATEGORY_OPTIONS = [
-  "face_wash",
-  "moisturizer",
-  "face_serum",
-  "sunscreen",
-  "shampoo",
-  "conditioner",
-  "body_wash",
-  "soap",
-  "foundation",
-  "compact",
-  "lipstick",
-  "kajal",
-  "eyeliner",
-  "nail_polish",
-  "rice",
-  "atta",
-  "pulses",
-  "namkeen",
-  "biscuits",
-  "chips",
-  "floor_cleaner",
-  "toilet_cleaner",
-  "tissue",
-  "napkin",
-  "notebook",
-  "pen",
-  "agarbatti",
-  "diya",
-  "teddy_bear",
-  "soft_toy",
-  "chocolate_box",
-  "photo_frame",
-  "greeting_card",
-  "custom_mug",
-] as const;
 
 const MEASUREMENT_UNITS = ["", "ml", "L", "g", "kg", "pcs"] as const;
 
@@ -107,6 +37,8 @@ type AssetLike = {
   uri: string;
   fileName?: string;
   mimeType?: string;
+  publicId?: string; // For existing images from backend
+  isExisting?: boolean; // Flag to differentiate from new picks
 };
 
 type PriceTierForm = {
@@ -128,16 +60,71 @@ type VariantForm = {
   isExpanded?: boolean;
 };
 
+// ----- UI Components -----
+
+interface InputFieldProps {
+  label: string;
+  value: string;
+  onChange: (text: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  keyboardType?: "default" | "numeric" | "email-address" | "phone-pad";
+  style?: any;
+}
+
+const InputField = React.memo<InputFieldProps>(({
+  label,
+  value,
+  onChange,
+  placeholder,
+  multiline = false,
+  keyboardType = "default",
+  style,
+}) => (
+  <View style={[styles.inputGroup, style]}>
+    <Text style={styles.label}>{label}</Text>
+    <TextInput
+      style={[styles.input, multiline && styles.textArea]}
+      placeholder={placeholder}
+      placeholderTextColor="#94a3b8"
+      value={value}
+      onChangeText={onChange}
+      multiline={multiline}
+      keyboardType={keyboardType}
+      textAlignVertical={multiline ? "top" : "center"}
+    />
+  </View>
+));
+
+InputField.displayName = 'InputField';
+
 const CreateProductScreen: React.FC = () => {
   const navigation = useNavigation();
+  const route = useRoute<RouteProp<ProductsStackParamList, 'ProductForm'>>();
+  
+  // Get productId from route params (if editing)
+  const productId = route.params?.productId;
+  const isEditMode = !!productId;
+  
+  // Fetch product data if editing
+  const { data: productData, isLoading: isLoadingProduct } = useGetProductDetail(productId || '');
+  const product = productData as any;
 
   // ----- State -----
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [brand, setBrand] = useState("");
-  const [category, setCategory] = useState<string>("beauty");
-  const [subCategory, setSubCategory] = useState<string | undefined>();
-  const [subSubCategory, setSubSubCategory] = useState<string | undefined>();
+  
+  // Category state with cascading dropdowns
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<SubCategory | null>(null);
+  const [selectedSubSubCategory, setSelectedSubSubCategory] = useState<SubSubCategory | null>(null);
+  
+  // Modal states for category selectors
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showSubCategoryModal, setShowSubCategoryModal] = useState(false);
+  const [showSubSubCategoryModal, setShowSubSubCategoryModal] = useState(false);
+  
   const [tagsInput, setTagsInput] = useState("");
   const [description, setDescription] = useState("");
 
@@ -162,23 +149,160 @@ const CreateProductScreen: React.FC = () => {
       isExpanded: true,
     },
   ]);
+  
+  // Track deleted images for update mode
+  const [deletedThumbnailId, setDeletedThumbnailId] = useState<string | null>(null);
+  const [deletedVariantImageIds, setDeletedVariantImageIds] = useState<string[]>([]);
+
+  // Fetch categories and sub-categories dynamically
+  const { data: categories, isLoading: loadingCategories } = useCategories();
+  const { data: subCategories, isLoading: loadingSubCategories } = useSubCategories(
+    selectedCategory?._id
+  );
+  const { data: subSubCategories, isLoading: loadingSubSubCategories } = useSubSubCategories(
+    selectedSubCategory?._id
+  );
 
   const {
-    mutateAsync,
-    isPending: isLoading,
-    isError,
-    error,
+    mutateAsync: createProduct,
+    isPending: isCreating,
+    isError: isCreateError,
+    error: createError,
   } = useCreateAdminProduct();
+  
+  const {
+    mutateAsync: updateProduct,
+    isPending: isUpdating,
+  } = useUpdateProduct();
+  
+  const isLoading = isCreating || isUpdating;
+
+  // Cascading reset: when category changes, reset subcategory and sub-subcategory
+  useEffect(() => {
+    setSelectedSubCategory(null);
+    setSelectedSubSubCategory(null);
+  }, [selectedCategory]);
+
+  // Reset sub-subcategory when subcategory changes
+  useEffect(() => {
+    setSelectedSubSubCategory(null);
+  }, [selectedSubCategory]);
 
   useEffect(() => {
-    if (isError) {
+    if (isCreateError) {
       Toast.show({
         type: "error",
         text1: "Submission Failed",
-        text2: String(error),
+        text2: String(createError),
       });
     }
-  }, [isError, error]);
+  }, [isCreateError, createError]);
+  
+  // Pre-fill form data when editing
+  useEffect(() => {
+    if (isEditMode && product && !isLoadingProduct) {
+      // Basic details
+      setName(product.name || '');
+      setBrand(product.brand || '');
+      setSlug(product.slug || '');
+      setDescription(product.description || '');
+      setTagsInput(product.tags?.join(', ') || '');
+      setIsActive(product.isActive ?? true);
+      
+      // Delivery options
+      setDeliveryCancel(product.deliveryOption?.isCancel || false);
+      setDeliveryReturnable(product.deliveryOption?.isReturnable || false);
+      setDeliveryWarranty(product.deliveryOption?.isWarranty || false);
+      
+      // Thumbnail
+      if (product.thumbnail) {
+        setThumbnail({
+          uri: product.thumbnail.secureUrl || product.thumbnail.url,
+          fileName: product.thumbnail.publicId,
+          mimeType: 'image/jpeg',
+          publicId: product.thumbnail.publicId,
+          isExisting: true,
+        });
+      }
+      
+      // Categories - find and set from fetched data
+      if (categories && product.category) {
+        const cat = categories.find((c: Category) => c.name === product.category);
+        if (cat) setSelectedCategory(cat);
+      }
+      
+      if (subCategories && product.subCategory) {
+        const subCat = subCategories.find((sc: SubCategory) => sc.name === product.subCategory);
+        if (subCat) setSelectedSubCategory(subCat);
+      }
+      
+      if (subSubCategories && product.subSubCategory) {
+        const subSubCat = subSubCategories.find((ssc: SubSubCategory) => ssc.name === product.subSubCategory);
+        if (subSubCat) setSelectedSubSubCategory(subSubCat);
+      }
+      
+      // Variants
+      if (product.variants && product.variants.length > 0) {
+        setVariants(product.variants.map((v: any, idx: number) => ({
+          packOf: v.packOf?.toString() || '1',
+          measurementValue: v.measurement?.value?.toString() || '',
+          measurementUnit: v.measurement?.unit || '',
+          measurementLabel: v.measurement?.label || '',
+          mrp: v.mrp?.toString() || '',
+          stock: v.stock?.toString() || '',
+          isActive: v.isActive ?? true,
+          sellingPrices: v.sellingPrices?.map((sp: any) => ({
+            minQuantity: sp.minQuantity?.toString() || '1',
+            price: sp.price?.toString() || '',
+            discount: sp.discount?.toString() || '0',
+          })) || [{ minQuantity: '1', price: '', discount: '0' }],
+          images: v.images?.map((img: any) => ({
+            uri: img.secureUrl || img.url,
+            fileName: img.publicId,
+            mimeType: 'image/jpeg',
+            publicId: img.publicId,
+            isExisting: true,
+          })) || [],
+          isExpanded: idx === 0,
+          _id: v._id,
+        })));
+      }
+    }
+  }, [isEditMode, product, isLoadingProduct, categories, subCategories, subSubCategories]);
+
+  // ----- Slug Helpers -----
+
+  const slugify = (value: string) =>
+    value
+      .toLowerCase()
+      .trim()
+      .replace(/&/g, " and ")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+
+  const buildUniqueSlug = () => {
+    const parts: string[] = [];
+
+    if (brand) parts.push(brand);
+    if (name) parts.push(name);
+    if (selectedCategory?.name) parts.push(selectedCategory.name);
+    if (selectedSubCategory?.name) parts.push(selectedSubCategory.name);
+    if (selectedSubSubCategory?.name) parts.push(selectedSubSubCategory.name);
+
+    const firstVariant = variants[0];
+    if (firstVariant) {
+      if (firstVariant.packOf) parts.push(`pack-${firstVariant.packOf}`);
+      if (firstVariant.measurementValue || firstVariant.measurementUnit) {
+        parts.push(
+          `${firstVariant.measurementValue}${firstVariant.measurementUnit}`
+        );
+      }
+    }
+
+    const base = slugify(parts.join(" "));
+    const shortId = Date.now().toString(36).slice(-4);
+    return base ? `${base}-${shortId}` : shortId;
+  };
 
   // ----- Logic Helpers -----
 
@@ -206,15 +330,20 @@ const CreateProductScreen: React.FC = () => {
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"], // ✅ latest format
+        mediaTypes: ["images"],
         allowsMultipleSelection: false,
-        allowsEditing: true,
-        aspect: [1, 1],
+        allowsEditing: false,
         quality: 0.8,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
+        
+        // Track deleted thumbnail if replacing existing one
+        if (isEditMode && thumbnail?.isExisting && thumbnail?.publicId) {
+          setDeletedThumbnailId(thumbnail.publicId);
+        }
+        
         setThumbnail({
           uri: asset.uri,
           fileName: asset.fileName || `thumb-${Date.now()}.jpg`,
@@ -232,7 +361,7 @@ const CreateProductScreen: React.FC = () => {
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"], // ✅ latest format
+        mediaTypes: ["images"],
         allowsMultipleSelection: true,
         quality: 0.8,
       });
@@ -254,15 +383,19 @@ const CreateProductScreen: React.FC = () => {
     }
   };
 
-  const updateVariantField = (idx: number, key: keyof VariantForm, value: any) => {
+  const updateVariantField = useCallback((
+    idx: number,
+    key: keyof VariantForm,
+    value: any
+  ) => {
     setVariants((prev) => {
       const copy = [...prev];
       (copy[idx] as any)[key] = value;
       return copy;
     });
-  };
+  }, []);
 
-  const updatePriceTierField = (
+  const updatePriceTierField = useCallback((
     vIndex: number,
     pIndex: number,
     key: keyof PriceTierForm,
@@ -287,9 +420,9 @@ const CreateProductScreen: React.FC = () => {
       copy[vIndex].sellingPrices = tiers;
       return copy;
     });
-  };
+  }, []);
 
-  const updateVariantMRP = (vIndex: number, mrpValue: string) => {
+  const updateVariantMRP = useCallback((vIndex: number, mrpValue: string) => {
     setVariants((prev) => {
       const copy = [...prev];
       copy[vIndex].mrp = mrpValue;
@@ -304,7 +437,7 @@ const CreateProductScreen: React.FC = () => {
       });
       return copy;
     });
-  };
+  }, []);
 
   const addVariant = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -355,6 +488,13 @@ const CreateProductScreen: React.FC = () => {
   const removeVariantImage = (vIndex: number, imgIndex: number) => {
     setVariants((prev) => {
       const copy = [...prev];
+      const imageToRemove = copy[vIndex].images[imgIndex];
+      
+      // Track deleted image ID if it's an existing image
+      if (imageToRemove.isExisting && imageToRemove.publicId) {
+        setDeletedVariantImageIds((prevIds) => [...prevIds, imageToRemove.publicId!]);
+      }
+      
       copy[vIndex].images = copy[vIndex].images.filter(
         (_, i) => i !== imgIndex
       );
@@ -363,8 +503,8 @@ const CreateProductScreen: React.FC = () => {
   };
 
   const handleSubmit = async () => {
-    if (!name.trim() || !brand.trim() || !slug.trim()) {
-      Alert.alert("Missing Fields", "Please fill in Brand, Name, and Slug.");
+    if (!name.trim() || !brand.trim()) {
+      Alert.alert("Missing Fields", "Please fill in Brand and Name.");
       return;
     }
     if (!thumbnail) {
@@ -377,13 +517,14 @@ const CreateProductScreen: React.FC = () => {
       .map((t) => t.trim())
       .filter(Boolean);
 
+    const finalSlug = buildUniqueSlug();
+    setSlug(finalSlug);
+
     const productPayload = {
       name,
       brand,
-      slug,
-      category,
-      subCategory,
-      subSubCategory,
+      slug: finalSlug,
+      categoryId: selectedSubSubCategory?._id,
       tags,
       description,
       deliveryOption: {
@@ -419,6 +560,16 @@ const CreateProductScreen: React.FC = () => {
 
     const formData = new FormData();
     formData.append("data", JSON.stringify(productPayload));
+    
+    // Add deleted image IDs for update mode
+    if (isEditMode) {
+      if (deletedThumbnailId) {
+        formData.append("deletedThumbnailId", deletedThumbnailId);
+      }
+      if (deletedVariantImageIds.length > 0) {
+        formData.append("deletedVariantImageIds", JSON.stringify(deletedVariantImageIds));
+      }
+    }
 
     const thumbUri =
       Platform.OS === "android"
@@ -428,14 +579,20 @@ const CreateProductScreen: React.FC = () => {
       thumbnail.fileName || thumbUri.split("/").pop() || "thumbnail.jpg";
     const thumbType = thumbnail.mimeType || "image/jpeg";
 
-    formData.append("thumbnail", {
-      uri: thumbUri,
-      name: thumbName,
-      type: thumbType,
-    } as any);
+    formData.append(
+      "thumbnail",
+      {
+        uri: thumbUri,
+        name: thumbName,
+        type: thumbType,
+      } as any
+    );
 
     variants.forEach((v, vIndex) => {
-      v.images.forEach((img, imgIndex) => {
+      // Only upload new images (not existing ones)
+      const newImages = v.images.filter(img => !img.isExisting);
+      
+      newImages.forEach((img, imgIndex) => {
         const vImgUri =
           Platform.OS === "android"
             ? img.uri
@@ -446,48 +603,26 @@ const CreateProductScreen: React.FC = () => {
           `v-${vIndex}-${imgIndex}.jpg`;
         const vImgType = img.mimeType || "image/jpeg";
 
-        formData.append(`variantImages[${vIndex}]`, {
-          uri: vImgUri,
-          name: vImgName,
-          type: vImgType,
-        } as any);
+        formData.append(
+          `variantImages[${vIndex}]`,
+          {
+            uri: vImgUri,
+            name: vImgName,
+            type: vImgType,
+          } as any
+        );
       });
     });
 
-    const res: any = await mutateAsync({ formData });
+    const res: any = isEditMode 
+      ? await updateProduct({ productId: productId!, formData })
+      : await createProduct({ formData });
     Toast.show({
       type: "success",
       text1: res?.message || "Product Created!",
     });
-    // @ts-ignore
     navigation.goBack();
   };
-
-  // ----- UI Components -----
-
-  const InputField = ({
-    label,
-    value,
-    onChange,
-    placeholder,
-    multiline = false,
-    keyboardType = "default",
-    style,
-  }: any) => (
-    <View style={[styles.inputGroup, style]}>
-      <Text style={styles.label}>{label}</Text>
-      <TextInput
-        style={[styles.input, multiline && styles.textArea]}
-        placeholder={placeholder}
-        placeholderTextColor="#94a3b8"
-        value={value}
-        onChangeText={onChange}
-        multiline={multiline}
-        keyboardType={keyboardType}
-        textAlignVertical={multiline ? "top" : "center"}
-      />
-    </View>
-  );
 
   return (
     <View style={styles.container}>
@@ -499,6 +634,16 @@ const CreateProductScreen: React.FC = () => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Loading state for edit mode */}
+          {isEditMode && isLoadingProduct ? (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100 }}>
+              <ActivityIndicator size="large" color="#6366f1" />
+              <Text style={{ marginTop: 16, fontSize: 16, color: '#64748b' }}>
+                Loading product data...
+              </Text>
+            </View>
+          ) : (
+            <>
           {/* Header */}
           <LinearGradient
             colors={["#6366f1", "#4f46e5"]}
@@ -513,9 +658,11 @@ const CreateProductScreen: React.FC = () => {
               <Ionicons name="arrow-back" size={24} color="white" />
             </TouchableOpacity>
             <View>
-              <Text style={styles.headerTitle}>Add New Product</Text>
+              <Text style={styles.headerTitle}>
+                {isEditMode ? 'Edit Product' : 'Add New Product'}
+              </Text>
               <Text style={styles.headerSubtitle}>
-                URS Shop
+                UK Cosmetics & Gift Center
               </Text>
             </View>
           </LinearGradient>
@@ -535,108 +682,132 @@ const CreateProductScreen: React.FC = () => {
               onChange={setBrand}
               placeholder="e.g. Lakme"
             />
+
             <InputField
               label="Product Name"
               value={name}
-              onChange={(t: string) => {
-                setName(t);
-                if (!slug)
-                  setSlug(
-                    t
-                      .toLowerCase()
-                      .trim()
-                      .replace(/[^a-z0-9]+/g, "-")
-                  );
-              }}
+              onChange={setName}
               placeholder="e.g. 9to5 Lipstick"
             />
 
+            {/* Slug - read-only, auto generated */}
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Slug (URL)</Text>
-              <TextInput
+              <Text style={styles.label}>Slug (auto-generated)</Text>
+              <View
                 style={[
                   styles.input,
-                  { backgroundColor: "#f1f5f9", color: "#64748b" },
+                  {
+                    backgroundColor: "#f1f5f9",
+                    borderStyle: "dashed",
+                    borderColor: "#cbd5e1",
+                    justifyContent: "center",
+                  },
                 ]}
-                value={slug}
-                onChangeText={setSlug}
-                placeholder="product-url-slug"
-                autoCapitalize="none"
-              />
+              >
+                <Text
+                  style={{
+                    color: slug ? "#334155" : "#94a3b8",
+                    fontSize: 14,
+                  }}
+                  numberOfLines={1}
+                >
+                  {slug || "Slug will be generated when you save"}
+                </Text>
+              </View>
             </View>
 
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.label}>Category</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={category}
-                    onValueChange={(itemValue) => setCategory(itemValue)}
-                    style={styles.picker}
-                    dropdownIconColor="#6366f1"
-                  >
-                    {CATEGORY_OPTIONS.map((c) => (
-                      <Picker.Item
-                        key={c}
-                        label={c.replace(/_/g, " ").toUpperCase()}
-                        value={c}
-                        color="#000"
-                      />
-                    ))}
-                  </Picker>
+            {/* Category Selectors */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Category *</Text>
+              <Pressable
+                onPress={() => setShowCategoryModal(true)}
+                disabled={loadingCategories || isLoading}
+                style={styles.selectorButton}
+              >
+                <View style={styles.selectorContent}>
+                  {loadingCategories ? (
+                    <ActivityIndicator size="small" color="#6366f1" />
+                  ) : (
+                    <>
+                      <Text style={[
+                        styles.selectorText,
+                        !selectedCategory && styles.selectorPlaceholder
+                      ]}>
+                        {selectedCategory?.name || 'Select a category'}
+                      </Text>
+                      <Ionicons name="chevron-down" size={20} color="#64748b" />
+                    </>
+                  )}
                 </View>
-              </View>
-              <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                <Text style={styles.label}>Sub-Category</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={subCategory}
-                    onValueChange={(itemValue) => setSubCategory(itemValue)}
-                    style={styles.picker}
-                    dropdownIconColor="#6366f1"
-                  >
-                    <Picker.Item
-                      label="Select..."
-                      value={undefined}
-                      color="#94a3b8"
-                    />
-                    {SUBCATEGORY_OPTIONS.map((c) => (
-                      <Picker.Item
-                        key={c}
-                        label={c.replace("beauty_", "").replace(/_/g, " ")}
-                        value={c}
-                        color="#000"
-                      />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
+              </Pressable>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Specific Type (Optional)</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={subSubCategory}
-                  onValueChange={(val) => setSubSubCategory(val)}
-                  style={styles.picker}
-                  dropdownIconColor="#6366f1"
-                >
-                  <Picker.Item
-                    label="Select Specific Type..."
-                    value={undefined}
-                    color="#94a3b8"
-                  />
-                  {SUBSUBCATEGORY_OPTIONS.map((c) => (
-                    <Picker.Item
-                      key={c}
-                      label={c.replace(/_/g, " ")}
-                      value={c}
-                      color="#000"
-                    />
-                  ))}
-                </Picker>
-              </View>
+              <Text style={styles.label}>SubCategory</Text>
+              <Pressable
+                onPress={() => setShowSubCategoryModal(true)}
+                disabled={!selectedCategory || loadingSubCategories || isLoading}
+                style={[
+                  styles.selectorButton,
+                  !selectedCategory && styles.selectorDisabled
+                ]}
+              >
+                <View style={styles.selectorContent}>
+                  {loadingSubCategories ? (
+                    <ActivityIndicator size="small" color="#6366f1" />
+                  ) : (
+                    <>
+                      <Text style={[
+                        styles.selectorText,
+                        !selectedSubCategory && styles.selectorPlaceholder,
+                        !selectedCategory && styles.selectorTextDisabled
+                      ]}>
+                        {selectedSubCategory?.name || 
+                         (!selectedCategory ? 'Select category first' : 'Select a subcategory')}
+                      </Text>
+                      <Ionicons 
+                        name="chevron-down" 
+                        size={20} 
+                        color={!selectedCategory ? "#cbd5e1" : "#64748b"} 
+                      />
+                    </>
+                  )}
+                </View>
+              </Pressable>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Sub-SubCategory (Optional)</Text>
+              <Pressable
+                onPress={() => setShowSubSubCategoryModal(true)}
+                disabled={!selectedSubCategory || loadingSubSubCategories || isLoading}
+                style={[
+                  styles.selectorButton,
+                  !selectedSubCategory && styles.selectorDisabled
+                ]}
+              >
+                <View style={styles.selectorContent}>
+                  {loadingSubSubCategories ? (
+                    <ActivityIndicator size="small" color="#6366f1" />
+                  ) : (
+                    <>
+                      <Text style={[
+                        styles.selectorText,
+                        !selectedSubSubCategory && styles.selectorPlaceholder,
+                        !selectedSubCategory && styles.selectorTextDisabled
+                      ]}>
+                        {selectedSubSubCategory?.name || 
+                         (!selectedSubCategory ? 'Select subcategory first' : 'Select specific type')}
+                      </Text>
+                      <Ionicons 
+                        name="chevron-down" 
+                        size={20} 
+                        color={!selectedSubCategory ? "#cbd5e1" : "#64748b"} 
+                      />
+                    </>
+                  )}
+                </View>
+              </Pressable>
             </View>
 
             <InputField
@@ -773,7 +944,7 @@ const CreateProductScreen: React.FC = () => {
                       onChange={(t: string) =>
                         updateVariantField(vIndex, "packOf", t)
                       }
-                      style={{ flex: 1, marginRight: 8 }}
+                      style={styles.flexOneMarginRight}
                       keyboardType="numeric"
                       placeholder="1"
                     />
@@ -783,7 +954,7 @@ const CreateProductScreen: React.FC = () => {
                       onChange={(t: string) =>
                         updateVariantField(vIndex, "stock", t)
                       }
-                      style={{ flex: 1, marginLeft: 8 }}
+                      style={styles.flexOneMarginLeft}
                       keyboardType="numeric"
                       placeholder="100"
                     />
@@ -792,11 +963,12 @@ const CreateProductScreen: React.FC = () => {
                   {/* Measurement */}
                   <Text style={styles.subLabel}>Measurement</Text>
                   <View style={styles.measurementRow}>
-                    <View style={{ flex: 1 }}>
-                      <TextInput
-                        style={styles.inputSm}
-                        placeholder="Value (200)"
-                        keyboardType="numeric"
+                    <View style={{  flexDirection: "row",gap:8 }}>
+                      <View style={{ flex: 1 }}>
+                        <TextInput
+                          style={styles.inputSm}
+                          placeholder="Value (200)"
+                          keyboardType="numeric"
                         value={v.measurementValue}
                         onChangeText={(t) =>
                           updateVariantField(vIndex, "measurementValue", t)
@@ -824,8 +996,9 @@ const CreateProductScreen: React.FC = () => {
                         ))}
                       </Picker>
                     </View>
+                    </View>
 
-                    <View style={{ flex: 2 }}>
+                    <View style={{ width:"100%" }}>
                       <TextInput
                         style={styles.inputSm}
                         placeholder="Label (e.g. 200ml)"
@@ -894,10 +1067,7 @@ const CreateProductScreen: React.FC = () => {
                           <TextInput
                             style={[
                               styles.inputXs,
-                              {
-                                fontWeight: "bold",
-                                color: "#10b981",
-                              },
+                              { fontWeight: "bold", color: "#10b981" },
                             ]}
                             value={p.price}
                             keyboardType="numeric"
@@ -921,9 +1091,7 @@ const CreateProductScreen: React.FC = () => {
                         </View>
                         {v.sellingPrices.length > 1 && (
                           <TouchableOpacity
-                            onPress={() =>
-                              removePriceTier(vIndex, pIndex)
-                            }
+                            onPress={() => removePriceTier(vIndex, pIndex)}
                             style={{ marginTop: 18 }}
                           >
                             <Ionicons
@@ -965,16 +1133,10 @@ const CreateProductScreen: React.FC = () => {
                             style={styles.variantThumb}
                           />
                           <TouchableOpacity
-                            onPress={() =>
-                              removeVariantImage(vIndex, idx)
-                            }
+                            onPress={() => removeVariantImage(vIndex, idx)}
                             style={styles.removeThumbBtn}
                           >
-                            <Ionicons
-                              name="close"
-                              size={12}
-                              color="white"
-                            />
+                            <Ionicons name="close" size={12} color="white" />
                           </TouchableOpacity>
                         </View>
                       ))}
@@ -1048,14 +1210,208 @@ const CreateProductScreen: React.FC = () => {
               style={styles.submitGradient}
             >
               <Text style={styles.submitText}>
-                {isLoading ? "Saving..." : "Create Product"}
+                {isLoading 
+                  ? (isEditMode ? "Updating..." : "Saving...") 
+                  : (isEditMode ? "Update Product" : "Create Product")
+                }
               </Text>
             </LinearGradient>
           </TouchableOpacity>
 
           <View style={{ height: 40 }} />
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Category Modal */}
+      <Modal
+        visible={showCategoryModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCategoryModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowCategoryModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Category</Text>
+              <Pressable
+                onPress={() => setShowCategoryModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#64748b" />
+              </Pressable>
+            </View>
+
+            {categories && categories.length > 0 ? (
+              <FlatList
+                data={categories}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.categoryItem,
+                      pressed && styles.categoryItemPressed,
+                      selectedCategory?._id === item._id && styles.categoryItemSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedCategory(item);
+                      setShowCategoryModal(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryItemText,
+                      selectedCategory?._id === item._id && styles.categoryItemTextSelected,
+                    ]}>
+                      {item.name}
+                    </Text>
+                    {selectedCategory?._id === item._id && (
+                      <Ionicons name="checkmark-circle" size={20} color="#6366f1" />
+                    )}
+                  </Pressable>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="folder-open-outline" size={48} color="#cbd5e1" />
+                <Text style={styles.emptyStateText}>No categories found</Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* SubCategory Modal */}
+      <Modal
+        visible={showSubCategoryModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSubCategoryModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowSubCategoryModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select SubCategory</Text>
+              <Pressable
+                onPress={() => setShowSubCategoryModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#64748b" />
+              </Pressable>
+            </View>
+
+            {subCategories && subCategories.length > 0 ? (
+              <FlatList
+                data={subCategories}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.categoryItem,
+                      pressed && styles.categoryItemPressed,
+                      selectedSubCategory?._id === item._id && styles.categoryItemSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedSubCategory(item);
+                      setShowSubCategoryModal(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryItemText,
+                      selectedSubCategory?._id === item._id && styles.categoryItemTextSelected,
+                    ]}>
+                      {item.name}
+                    </Text>
+                    {selectedSubCategory?._id === item._id && (
+                      <Ionicons name="checkmark-circle" size={20} color="#6366f1" />
+                    )}
+                  </Pressable>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="albums-outline" size={48} color="#cbd5e1" />
+                <Text style={styles.emptyStateText}>No subcategories found</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Create a subcategory for this category first
+                </Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* SubSubCategory Modal */}
+      <Modal
+        visible={showSubSubCategoryModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSubSubCategoryModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowSubSubCategoryModal(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Sub-SubCategory</Text>
+              <Pressable
+                onPress={() => setShowSubSubCategoryModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#64748b" />
+              </Pressable>
+            </View>
+
+            {subSubCategories && subSubCategories.length > 0 ? (
+              <FlatList
+                data={subSubCategories}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.categoryItem,
+                      pressed && styles.categoryItemPressed,
+                      selectedSubSubCategory?._id === item._id && styles.categoryItemSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedSubSubCategory(item);
+                      setShowSubSubCategoryModal(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.categoryItemText,
+                      selectedSubSubCategory?._id === item._id && styles.categoryItemTextSelected,
+                    ]}>
+                      {item.name}
+                    </Text>
+                    {selectedSubSubCategory?._id === item._id && (
+                      <Ionicons name="checkmark-circle" size={20} color="#6366f1" />
+                    )}
+                  </Pressable>
+                )}
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
+              />
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="layers-outline" size={48} color="#cbd5e1" />
+                <Text style={styles.emptyStateText}>No sub-subcategories found</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  Create a sub-subcategory for this subcategory first
+                </Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -1178,7 +1534,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
     justifyContent: "center",
     alignItems: "center",
-    overflow: "hidden",
+    // overflow: "hidden",
   },
   fullWidthImageContainer: {
     width: "100%",
@@ -1303,8 +1659,9 @@ const styles = StyleSheet.create({
   },
   measurementRow: {
     flexDirection: "column",
-    // alignItems: "center",
-    justifyContent: "space-between",
+    alignItems: "center",
+    // justifyContent: "flex-start",
+    // flexWrap: "wrap",
     gap: 8,
   },
   inputSm: {
@@ -1312,10 +1669,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#cbd5e1",
     borderRadius: 8,
-    height: 50,
+    height: 40,
     paddingHorizontal: 10,
     fontSize: 14,
     color: "#000",
+    width: "100%",  
   },
   measurementPickerWrapper: {
     flex: 1.2,
@@ -1323,7 +1681,7 @@ const styles = StyleSheet.create({
     borderColor: "#cbd5e1",
     borderRadius: 8,
     backgroundColor: "#fff",
-    height: 50,
+    height: 40,
     justifyContent: "center",
   },
   pickerSm: {
@@ -1390,7 +1748,7 @@ const styles = StyleSheet.create({
   removeThumbBtn: {
     position: "absolute",
     top: 0,
-    right: -6,
+    right: 0,
     backgroundColor: "#ef4444",
     borderRadius: 10,
     width: 20,
@@ -1434,5 +1792,121 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "bold",
     letterSpacing: 0.5,
+  },
+  flexOneMarginRight: {
+    flex: 1,
+    marginRight: 8,
+  },
+  flexOneMarginLeft: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  // Category Selector Styles
+  selectorButton: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1.5,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  selectorDisabled: {
+    backgroundColor: "#f1f5f9",
+    borderColor: "#e2e8f0",
+  },
+  selectorContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  selectorText: {
+    fontSize: 16,
+    color: "#0f172a",
+    fontWeight: "500",
+  },
+  selectorPlaceholder: {
+    color: "#94a3b8",
+    fontWeight: "400",
+  },
+  selectorTextDisabled: {
+    color: "#cbd5e1",
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: 20,
+    width: "100%",
+    maxHeight: "70%",
+    padding: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1e293b",
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f1f5f9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  categoryItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  categoryItemPressed: {
+    backgroundColor: "#f1f5f9",
+  },
+  categoryItemSelected: {
+    backgroundColor: "#e0e7ff",
+  },
+  categoryItemText: {
+    fontSize: 16,
+    color: "#1e293b",
+    fontWeight: "500",
+  },
+  categoryItemTextSelected: {
+    color: "#6366f1",
+    fontWeight: "700",
+  },
+  separator: {
+    height: 1,
+    backgroundColor: "#f1f5f9",
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#64748b",
+    marginTop: 16,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: "#94a3b8",
+    marginTop: 4,
+    textAlign: "center",
   },
 });

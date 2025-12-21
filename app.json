@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/splash.png",
-      "resizeMode": "contain",
+      "resizeMode": "cover",
       "backgroundColor": "#6F56BF"
     },
 
@@ -33,7 +33,7 @@
       "package": "com.urshop.admin",
       "splash": {
         "image": "./assets/splash.png",
-        "resizeMode": "contain",
+        "resizeMode": "coverr",
         "backgroundColor": "#6F56BF"
       }
     },

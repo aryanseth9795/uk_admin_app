@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect, useState, useReducer, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,10 +8,12 @@ import {
   Pressable,
   Dimensions,
   ActivityIndicator,
+  Modal,
+  Animated as RNAnimated,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlashList } from '@shopify/flash-list';
-import Animated, { FadeInUp, FadeOut, Layout } from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeOut, Layout, FadeInRight, SlideInDown } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { ProductsStackParamList } from '@/navigation/ProductsNavigator';
 import { colors } from '@/theme/colors';
@@ -23,27 +26,51 @@ type Props = NativeStackScreenProps<ProductsStackParamList, 'ProductsList'>;
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - spacing.lg * 2 - spacing.md) / 2;
-const CARD_HEIGHT = CARD_WIDTH + 120; // fixed height so all cards same
+const CARD_HEIGHT = CARD_WIDTH + 120;
+
+// Filter state management with useReducer for batched updates
+interface FilterState {
+  category?: string;
+  subCategory?: string;
+  subSubCategory?: string;
+  brand?: string;
+  tags?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  inStock?: string;
+}
+
+type FilterAction =
+  | { type: 'SET_FILTERS'; payload: FilterState }
+  | { type: 'RESET_FILTERS' };
+
+const filterReducer = (state: FilterState, action: FilterAction): FilterState => {
+  switch (action.type) {
+    case 'SET_FILTERS':
+      return { ...action.payload };
+    case 'RESET_FILTERS':
+      return {};
+    default:
+      return state;
+  }
+};
 
 export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
   // search: input vs applied (to API)
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
 
-  // applied filters (used in API)
-  const [category, setCategory] = useState<string | undefined>();
-  const [subCategory, setSubCategory] = useState<string | undefined>();
-  const [subSubCategory, setSubSubCategory] = useState<string | undefined>();
-  const [brand, setBrand] = useState<string | undefined>();
-  const [tags, setTags] = useState<string | undefined>();
-  const [minPrice, setMinPrice] = useState<string | undefined>();
-  const [maxPrice, setMaxPrice] = useState<string | undefined>();
-  const [inStock, setInStock] = useState<string | undefined>(); // 'true'
+  // applied filters (used in API) - now using useReducer for batched updates
+  const [filters, dispatchFilters] = useReducer(filterReducer, {});
 
   const [page, setPage] = useState(1);
 
   // filter panel UI state (draft)
   const [showFilters, setShowFilters] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  
+  // FAB rotation animation
+  const rotateAnim = useRef(new RNAnimated.Value(0)).current;
   const [filterCategory, setFilterCategory] = useState('');
   const [filterSubCategory, setFilterSubCategory] = useState('');
   const [filterSubSubCategory, setFilterSubSubCategory] = useState('');
@@ -60,31 +87,30 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
   // SEARCH MODE: search OR filters
   const isSearchMode = search.trim().length > 0;
 
-  const { data, isLoading, isFetching,refetch } = useGetAdminProductList({
+  const { data, isLoading, isFetching, refetch } = useGetAdminProductList({
     page,
     search: isSearchMode ? search.trim() : undefined,
-    category: isSearchMode ? undefined : category,
-    subCategory: isSearchMode ? undefined : subCategory,
-    subSubCategory: isSearchMode ? undefined : subSubCategory,
-    brand: isSearchMode ? undefined : brand,
-    tags: isSearchMode ? undefined : tags,
-    minPrice: isSearchMode ? undefined : minPrice,
-    maxPrice: isSearchMode ? undefined : maxPrice,
-    inStock: isSearchMode ? undefined : inStock,
+    category: isSearchMode ? undefined : filters.category,
+    subCategory: isSearchMode ? undefined : filters.subCategory,
+    subSubCategory: isSearchMode ? undefined : filters.subSubCategory,
+    brand: isSearchMode ? undefined : filters.brand,
+    tags: isSearchMode ? undefined : filters.tags,
+    minPrice: isSearchMode ? undefined : filters.minPrice,
+    maxPrice: isSearchMode ? undefined : filters.maxPrice,
+    inStock: isSearchMode ? undefined : filters.inStock,
   });
 
-  const serverProducts = data?.products ?? [];
   const hasNextPage = data?.hasNextPage ?? false;
 
   const activeFilterCount = [
-    category,
-    subCategory,
-    subSubCategory,
-    brand,
-    tags,
-    minPrice,
-    maxPrice,
-    inStock === 'true' ? 'inStock' : null,
+    filters.category,
+    filters.subCategory,
+    filters.subSubCategory,
+    filters.brand,
+    filters.tags,
+    filters.minPrice,
+    filters.maxPrice,
+    filters.inStock === 'true' ? 'inStock' : null,
   ].filter(Boolean).length;
 
   const isInitialLoading =
@@ -94,20 +120,20 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
 
   // sync aggregated products when data changes
   useEffect(() => {
-    if (!data) return;
+    if (!data?.products) return;
+
+    const serverProducts = data.products;
 
     if (page === 1) {
       setProducts(serverProducts);
     } else {
       setProducts((prev) => {
         const existingIds = new Set(prev.map((p) => p._id));
-        const newOnes = serverProducts.filter(
-          (p) => !existingIds.has(p._id)
-        );
+        const newOnes = serverProducts.filter((p) => !existingIds.has(p._id));
         return [...prev, ...newOnes];
       });
     }
-  }, [serverProducts, page, data]);
+  }, [data, page]);
 
   // stop refreshing when new data has finished fetching
   useEffect(() => {
@@ -117,18 +143,7 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
   }, [isFetching, refreshing]);
 
   // ---- helpers to reset ----
-  const resetFiltersApplied = () => {
-    setCategory(undefined);
-    setSubCategory(undefined);
-    setSubSubCategory(undefined);
-    setBrand(undefined);
-    setTags(undefined);
-    setMinPrice(undefined);
-    setMaxPrice(undefined);
-    setInStock(undefined);
-  };
-
-  const resetFiltersUI = () => {
+  const resetFiltersUI = useCallback(() => {
     setFilterCategory('');
     setFilterSubCategory('');
     setFilterSubSubCategory('');
@@ -137,45 +152,47 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
     setFilterMinPrice('');
     setFilterMaxPrice('');
     setFilterInStock(false);
-  };
+  }, []);
 
-  const resetAllQueryState = () => {
+  const resetAllQueryState = useCallback(() => {
     setSearch('');
     setSearchInput('');
-    resetFiltersApplied();
+    dispatchFilters({ type: 'RESET_FILTERS' });
     resetFiltersUI();
     setPage(1);
     setProducts([]);
     setShowFilters(false);
-  };
+  }, [resetFiltersUI]);
 
   // ---- Search handlers ----
-
   const handleSearchChange = (text: string) => {
     setSearchInput(text);
   };
 
-  const applySearch = () => {
-    const value = searchInput.trim();
-
-    setProducts([]);
-    setPage(1);
-
-    if (value.length > 0) {
-      // search mode → clear filters
-      resetFiltersApplied();
+  const handleSearchSubmit = () => {
+    // Manual submit only (when user clicks search button or presses enter)
+    const trimmedInput = searchInput.trim();
+    
+    // Reset to all products if search is cleared
+    if (trimmedInput.length === 0 && search !== '') {
+      setSearch('');
+      setProducts([]);
+      setPage(1);
+      return;
+    }
+    
+    // Apply new search
+    if (trimmedInput !== search) {
+      setProducts([]);
+      setPage(1);
+      dispatchFilters({ type: 'RESET_FILTERS' });
       resetFiltersUI();
       setShowFilters(false);
+      setSearch(trimmedInput);
     }
-
-    setSearch(value);
   };
 
-  const handleSearchSubmit = () => {
-    applySearch();
-  };
-
-  // when search or filters are active, show cross icon
+  // when search or filters are active, show clear capability
   const hasActiveQuery = search.trim().length > 0 || activeFilterCount > 0;
 
   const handleClearAll = () => {
@@ -183,50 +200,61 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // ---- Filter handlers ----
-
   const handleToggleFilters = () => {
-    // opening filters clears search (search OR filters)
-    setSearch('');
-    setSearchInput('');
+    setShowFilters(true);
 
-    setShowFilters((prev) => !prev);
-
-    // init draft values from applied filters
-    setFilterCategory(category ?? '');
-    setFilterSubCategory(subCategory ?? '');
-    setFilterSubSubCategory(subSubCategory ?? '');
-    setFilterBrand(brand ?? '');
-    setFilterTags(tags ?? '');
-    setFilterMinPrice(minPrice ?? '');
-    setFilterMaxPrice(maxPrice ?? '');
-    setFilterInStock(inStock === 'true');
+    // init draft values from applied filters (don't clear search here)
+    setFilterCategory(filters.category ?? '');
+    setFilterSubCategory(filters.subCategory ?? '');
+    setFilterSubSubCategory(filters.subSubCategory ?? '');
+    setFilterBrand(filters.brand ?? '');
+    setFilterTags(filters.tags ?? '');
+    setFilterMinPrice(filters.minPrice ?? '');
+    setFilterMaxPrice(filters.maxPrice ?? '');
+    setFilterInStock(filters.inStock === 'true');
   };
 
   const handleApplyFilters = () => {
-    setProducts([]);
-    setPage(1);
+    // Build filter payload
+    const newFilters = {
+      category: filterCategory.trim() || undefined,
+      subCategory: filterSubCategory.trim() || undefined,
+      subSubCategory: filterSubSubCategory.trim() || undefined,
+      brand: filterBrand.trim() || undefined,
+      tags: filterTags.trim() || undefined,
+      minPrice: filterMinPrice.trim() || undefined,
+      maxPrice: filterMaxPrice.trim() || undefined,
+      inStock: filterInStock ? 'true' : undefined,
+    };
 
-    setCategory(filterCategory.trim() || undefined);
-    setSubCategory(filterSubCategory.trim() || undefined);
-    setSubSubCategory(filterSubSubCategory.trim() || undefined);
-    setBrand(filterBrand.trim() || undefined);
-    setTags(filterTags.trim() || undefined);
-    setMinPrice(filterMinPrice.trim() || undefined);
-    setMaxPrice(filterMaxPrice.trim() || undefined);
-    setInStock(filterInStock ? 'true' : undefined);
+    // Check if any filters are actually set
+    const hasAnyFilter = Object.values(newFilters).some(val => val !== undefined);
+
+    // Only clear search and reset if filters are actually being applied
+    if (hasAnyFilter) {
+      setProducts([]);
+      setPage(1);
+      setSearch('');
+      setSearchInput('');
+      
+      // Batch all filter updates in one action
+      dispatchFilters({
+        type: 'SET_FILTERS',
+        payload: newFilters,
+      });
+    }
 
     setShowFilters(false);
   };
 
   const handleClearFilters = () => {
-    resetFiltersApplied();
+    dispatchFilters({ type: 'RESET_FILTERS' });
     resetFiltersUI();
     setProducts([]);
     setPage(1);
   };
 
   // ---- Infinite scroll ----
-
   const handleLoadMore = () => {
     if (!isFetching && hasNextPage) {
       setPage((p) => p + 1);
@@ -234,21 +262,36 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   // ---- Pull to refresh ----
-
   const onRefresh = () => {
     setRefreshing(true);
-    // resetAllQueryState(); 
     refetch();
-    setRefreshing(false)
-    // // React Query refetches automatically when key changes
+    // refreshing is set false in useEffect when fetch finishes
   };
+
+  // ---- FAB animation ----
+  const toggleMenu = () => {
+    const toValue = showAddMenu ? 0 : 1;
+    setShowAddMenu(!showAddMenu);
+    
+    RNAnimated.spring(rotateAnim, {
+      toValue,
+      useNativeDriver: true,
+      friction: 5,
+      tension: 100,
+    }).start();
+  };
+
+  const rotation = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '45deg'],
+  });
 
   return (
     <ScreenContainer>
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.headerRow}>
-          <Text style={styles.heading}>Products</Text>
+          <Text style={styles.heading}>UR SHOP</Text>
         </View>
 
         {/* Search + Filter row */}
@@ -262,14 +305,26 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
               placeholderTextColor={colors.muted}
               style={styles.searchInput}
             />
+            {hasActiveQuery && (
+              <Pressable
+                style={styles.searchIconButton}
+                onPress={handleClearAll}
+              >
+                <Feather
+                  name="x"
+                  size={18}
+                  color={colors.muted}
+                />
+              </Pressable>
+            )}
             <Pressable
               style={styles.searchIconButton}
-              onPress={hasActiveQuery ? handleClearAll : handleSearchSubmit}
+              onPress={handleSearchSubmit}
             >
               <Feather
-                name={hasActiveQuery ? 'x' : 'search'}
+                name="search"
                 size={18}
-                color={colors.muted}
+                color={colors.primary}
               />
             </Pressable>
           </View>
@@ -278,7 +333,8 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
             <Pressable
               style={[
                 styles.filterButton,
-                showFilters && styles.filterButtonActive,
+                (showFilters || activeFilterCount > 0) &&
+                  styles.filterButtonActive,
               ]}
               onPress={handleToggleFilters}
             >
@@ -291,7 +347,7 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.filterButtonText}>Filters</Text>
             </Pressable>
             {activeFilterCount > 0 && (
-              <View  style={styles.filterBadge}>
+              <View style={styles.filterBadge}>
                 <Text style={styles.filterBadgeText}>
                   {activeFilterCount}
                 </Text>
@@ -309,13 +365,264 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
             : 'All products'}
         </Text>
 
-        {/* Filter panel */}
-        {showFilters && (
-          <Animated.View
-            entering={FadeInUp}
-            layout={Layout.springify()}
+        {/* Initial loading */}
+        {isInitialLoading && (
+          <View style={styles.center}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        )}
+
+        {/* Empty */}
+        {!isInitialLoading && !isFetching && products.length === 0 && (
+          <View style={styles.center}>
+            <Text style={styles.emptyText}>No products found.</Text>
+          </View>
+        )}
+
+        {/* List */}
+        {products.length > 0 && (
+          <>
+            <FlashList
+              data={products}
+              keyExtractor={(item: any) => item._id}
+              numColumns={2}
+              contentContainerStyle={styles.listContent}
+              onEndReached={handleLoadMore}
+              onEndReachedThreshold={0.5}
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              renderItem={({ item, index }) => {
+                const primaryVariant = item.variants?.[0];
+                const stock = primaryVariant?.stock ?? 0;
+                const firstTier = primaryVariant?.sellingPrices?.[0];
+                const sellingPrice =
+                  firstTier?.price ?? primaryVariant?.mrp ?? 0;
+
+                const mrp = primaryVariant?.mrp ?? 0;
+                const marginPercent =
+                  mrp > 0
+                    ? Math.round(
+                        ((Number(mrp) - Number(sellingPrice)) /
+                          Number(mrp)) *
+                          100
+                      )
+                    : null;
+
+                const variantCount = Array.isArray(item.variants)
+                  ? item.variants.length
+                  : 0;
+
+                const thumbUrl =
+                  item.thumbnail?.secureUrl || item.thumbnail?.url || '';
+
+                return (
+                  <Animated.View
+                    style={{ flex: 1 }}
+                    entering={FadeInUp.delay(index * 40)}
+                    exiting={FadeOut}
+                    layout={Layout.springify()}
+                  >
+                    <Pressable
+                      style={styles.card}
+                      onPress={() =>
+                        navigation.navigate('ProductDetail', {
+                          productId: item._id,
+                        })
+                      }
+                    >
+                      <View style={styles.thumbnailWrapper}>
+                        {thumbUrl ? (
+                          <Image
+                            source={{ uri: thumbUrl }}
+                            style={styles.thumbnail}
+                            contentFit="cover"
+                          />
+                        ) : (
+                          <View
+                            style={[
+                              styles.thumbnail,
+                              styles.thumbnailPlaceholder,
+                            ]}
+                          >
+                            <Text style={{ color: colors.textMuted }}>
+                              No image
+                            </Text>
+                          </View>
+                        )}
+
+                        {variantCount > 1 && (
+                          <View style={styles.variantFlag}>
+                            <Text style={styles.variantFlagText}>
+                              {variantCount} variants
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <Text numberOfLines={2} style={styles.name}>
+                        {item.name}
+                      </Text>
+
+                      <View style={styles.cardPriceRow}>
+                        <Text style={styles.price}>
+                          ₹{Number(sellingPrice || 0).toFixed(2)}
+                        </Text>
+                        {marginPercent !== null && (
+                          <Text style={styles.marginText}>
+                            {marginPercent}% margin
+                          </Text>
+                        )}
+                      </View>
+
+                      <View
+                        style={[
+                          styles.stockChip,
+                          stock > 2 ? styles.stockOk : styles.stockLow,
+                        ]}
+                      >
+                        <Text style={styles.stockText}>
+                          {stock > 2 ? 'In stock ' : 'Low stock '}(
+                          {stock})
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </Animated.View>
+                );
+              }}
+            />
+
+            {/* Load more spinner */}
+            {isLoadingMore && (
+              <View style={styles.loadMoreSpinner}>
+                <ActivityIndicator color={colors.primary} />
+              </View>
+            )}
+          </>
+        )}
+      </View>
+
+      {/* Floating + button like WhatsApp */}
+      <Pressable
+        style={styles.fab}
+        onPress={toggleMenu}
+      >
+        <RNAnimated.View style={{ transform: [{ rotate: rotation }] }}>
+          <Feather name="plus" size={24} color="#fff" />
+        </RNAnimated.View>
+      </Pressable>
+
+      {/* Add Menu Modal - WhatsApp Style */}
+      <Modal
+        visible={showAddMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={toggleMenu}
+      >
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={toggleMenu}
+        >
+          <View style={styles.menuContainer}>
+
+            <Animated.View
+              entering={SlideInDown.delay(150).springify()}
+              exiting={FadeOut}
+            >
+              <Pressable
+                style={styles.menuItemWhatsApp}
+                onPress={() => {
+                  toggleMenu();
+                  setTimeout(() => navigation.navigate('ProductForm'), 200);
+                }}
+              >
+                <View style={[styles.menuIconCircle, { backgroundColor: colors.primary }]}>
+                  <Feather name="package" size={20} color="#fff" />
+                </View>
+                <Text style={styles.menuItemWhatsAppText}>Add Product</Text>
+              </Pressable>
+            </Animated.View>
+           <Animated.View
+              entering={SlideInDown.delay(100).springify()}
+              exiting={FadeOut}
+            >
+              <Pressable
+                style={styles.menuItemWhatsApp}
+                onPress={() => {
+                  toggleMenu();
+                  setTimeout(() => navigation.navigate('CategoryForm'), 200);
+                }}
+              >
+                <View style={[styles.menuIconCircle, { backgroundColor: '#8B5CF6' }]}>
+                  <Feather name="folder" size={20} color="#fff" />
+                </View>
+                <Text style={styles.menuItemWhatsAppText}>Add Category</Text>
+              </Pressable>
+            </Animated.View>
+
+            <Animated.View
+              entering={SlideInDown.delay(50).springify()}
+              exiting={FadeOut}
+            >
+              <Pressable
+                style={styles.menuItemWhatsApp}
+                onPress={() => {
+                  toggleMenu();
+                  setTimeout(() => navigation.navigate('SubCategoryForm'), 200);
+                }}
+              >
+                <View style={[styles.menuIconCircle, { backgroundColor: '#10B981' }]}>
+                  <Feather name="grid" size={20} color="#fff" />
+                </View>
+                <Text style={styles.menuItemWhatsAppText}>Add SubCategory</Text>
+              </Pressable>
+            </Animated.View>
+
+            
+ <Animated.View
+              entering={SlideInDown.delay(0).springify()}
+              exiting={FadeOut}
+            >
+              <Pressable
+                style={styles.menuItemWhatsApp}
+                onPress={() => {
+                  toggleMenu();
+                  setTimeout(() => navigation.navigate('SubSubCategoryForm'), 200);
+                }}
+              >
+                <View style={[styles.menuIconCircle, { backgroundColor: '#F59E0B' }]}>
+                  <Feather name="layers" size={20} color="#fff" />
+                </View>
+                <Text style={styles.menuItemWhatsAppText}>Add Sub Sub Category</Text>
+              </Pressable>
+            </Animated.View>
+            
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Filter Modal – stays above FAB */}
+      <Modal
+        visible={showFilters}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowFilters(false)}
+        style={{ zIndex: 1,  position:"absolute", top: 20 }}
+      >
+        <Pressable
+          style={styles.backdrop}
+          onPress={() => setShowFilters(false)}
+        >
+          <Pressable
             style={styles.filterPanel}
+            onPress={(e) => e.stopPropagation()}
           >
+            <View style={styles.filterHeaderRow}>
+              <Text style={styles.filterHeaderTitle}>Filter Products</Text>
+              <Pressable onPress={() => setShowFilters(false)}>
+                <Feather name="x" size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
             <Text style={styles.filterLabel}>Category</Text>
             <TextInput
               value={filterCategory}
@@ -394,7 +701,9 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
               onPress={() => setFilterInStock((prev) => !prev)}
             >
               <Text style={styles.inStockToggleText}>
-                {filterInStock ? 'Only in-stock products' : 'Include out of stock'}
+                {filterInStock
+                  ? 'Only in-stock products'
+                  : 'Include out of stock'}
               </Text>
             </Pressable>
 
@@ -412,168 +721,29 @@ export const ProductsListScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.filterClearText}>Clear</Text>
               </Pressable>
             </View>
-          </Animated.View>
-        )}
-
-        {/* Initial loading */}
-        {isInitialLoading && (
-          <View style={styles.center}>
-            <ActivityIndicator color={colors.tint} />
-          </View>
-        )}
-
-        {/* Empty */}
-        {!isInitialLoading && !isFetching && products.length === 0 && (
-          <View style={styles.center}>
-            <Text style={styles.emptyText}>No products found.</Text>
-          </View>
-        )}
-
-        {/* List */}
-        {products.length > 0 && (
-          <>
-            <FlashList
-              data={products}
-              keyExtractor={(item: any) => item._id}
-              numColumns={2}
-              contentContainerStyle={styles.listContent}
-              onEndReached={handleLoadMore}
-              onEndReachedThreshold={0.5}
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              renderItem={({ item, index }) => {
-                const primaryVariant = item.variants?.[0];
-                const stock = primaryVariant?.stock ?? 0;
-                const firstTier = primaryVariant?.sellingPrices?.[0];
-                const sellingPrice =
-                  firstTier?.price ?? primaryVariant?.mrp ?? 0;
-
-                const mrp = primaryVariant?.mrp ?? 0;
-                const marginPercent =
-                  mrp > 0
-                    ? Math.round(
-                        ((Number(mrp) - Number(sellingPrice)) /
-                          Number(mrp)) * 100
-                      )
-                    : null;
-
-                const variantCount = Array.isArray(item.variants)
-                  ? item.variants.length
-                  : 0;
-
-                const thumbUrl =
-                  item.thumbnail?.secureUrl || item.thumbnail?.url || '';
-
-                return (
-                  <Animated.View
-                    style={{ flex: 1 }}
-                    entering={FadeInUp.delay(index * 40)}
-                    exiting={FadeOut}
-                    layout={Layout.springify()}
-                  >
-                    <Pressable
-                      style={styles.card}
-                      onPress={() =>
-                        navigation.navigate('ProductDetail', {
-                          productId: item._id,
-                        })
-                      }
-                    >
-                      <View style={styles.thumbnailWrapper}>
-                        {thumbUrl ? (
-                          <Image
-                            source={{ uri: thumbUrl }}
-                            style={styles.thumbnail}
-                            contentFit="cover"
-                          />
-                        ) : (
-                          <View
-                            style={[
-                              styles.thumbnail,
-                              styles.thumbnailPlaceholder,
-                            ]}
-                          >
-                            <Text style={{ color: colors.muted }}>
-                              No image
-                            </Text>
-                          </View>
-                        )}
-
-                        {variantCount > 1 && (
-                          <View style={styles.variantFlag}>
-                            <Text style={styles.variantFlagText}>
-                              {variantCount} variants
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-
-                      <Text numberOfLines={2} style={styles.name}>
-                        {item.name}
-                      </Text>
-
-                      <View style={styles.cardPriceRow}>
-                        <Text style={styles.price}>
-                          ₹{Number(sellingPrice || 0).toFixed(2)}
-                        </Text>
-                        {marginPercent !== null && (
-                          <Text style={styles.marginText}>
-                            {marginPercent}% margin
-                          </Text>
-                        )}
-                      </View>
-
-                      <View
-                        style={[
-                          styles.stockChip,
-                          stock > 2 ? styles.stockOk : styles.stockLow,
-                        ]}
-                      >
-                        <Text style={styles.stockText}>
-                          {stock > 2 ? 'In stock ' : 'Low stock '}(
-                          {stock})
-                        </Text>
-                      </View>
-                    </Pressable>
-                  </Animated.View>
-                );
-              }}
-            />
-
-            {/* Load more spinner */}
-            {isLoadingMore && (
-              <View style={styles.loadMoreSpinner}>
-                <ActivityIndicator color={colors.tint} />
-              </View>
-            )}
-          </>
-        )}
-      </View>
-
-      {/* Floating + button like WhatsApp */}
-      <Pressable
-        style={styles.fab}
-        onPress={() => navigation.navigate('ProductForm')}
-      >
-        <Feather name="plus" size={24} color="#fff" />
-      </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
+  container: { flex: 1, padding: 15, backgroundColor: colors.bg },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md,
-    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
   },
   heading: {
-    fontSize: 40,
-    fontWeight: '700',
-    color: colors.text,
+    fontSize: 28,
+    fontWeight: '900',
+    color: colors.primary,
+    backgroundColor: colors.bg,
+  
+   
   },
   searchFilterRow: {
     flexDirection: 'row',
@@ -589,6 +759,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.sm,
+    backgroundColor: colors.bgElevated,
   },
   searchInput: {
     flex: 1,
@@ -602,6 +773,7 @@ const styles = StyleSheet.create({
   },
   filterWrapper: {
     position: 'relative',
+ 
   },
   filterButton: {
     flexDirection: 'row',
@@ -611,11 +783,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.card,
+    backgroundColor: colors.bgElevated,
   },
   filterButtonActive: {
-    backgroundColor: '#e0f2fe',
-    borderColor: '#38bdf8',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
   },
   filterButtonText: {
     fontSize: 13,
@@ -629,7 +801,7 @@ const styles = StyleSheet.create({
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.danger,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
@@ -644,13 +816,36 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginBottom: spacing.sm,
   },
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15,23,42,0.45)',
+    justifyContent: 'flex-end',
+    // padding: spacing.md,
+  },
   filterPanel: {
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     padding: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: colors.card,
+    marginBottom: spacing.xs,
+    backgroundColor: colors.bgElevated,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  filterHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
   },
   filterLabel: {
     fontSize: 12,
@@ -666,6 +861,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.sm,
     fontSize: 13,
+    backgroundColor: colors.bgElevated,
   },
   priceRowFilters: {
     flexDirection: 'row',
@@ -678,10 +874,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
   },
   inStockToggleActive: {
-    backgroundColor: '#ecfdf3',
-    borderColor: '#16a34a',
+    backgroundColor: 'rgba(16,185,129,0.12)',
+    borderColor: colors.success,
   },
   inStockToggleText: {
     fontSize: 12,
@@ -697,7 +894,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: 10,
-    backgroundColor: colors.header,
+    backgroundColor: colors.primary,
   },
   filterApplyText: {
     color: '#fff',
@@ -710,6 +907,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.bgElevated,
   },
   filterClearText: {
     color: colors.text,
@@ -717,16 +915,20 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   listContent: {
-    paddingBottom: spacing.lg + 60, // extra space for FAB
+    // paddingBottom: spacing.md + 60,
+    display:"flex",
+    flexDirection:"column",  
+    justifyContent:"space-between",
+   
   },
   card: {
     width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-    backgroundColor: colors.card,
+    height: CARD_HEIGHT-5,
+    backgroundColor: colors.bgElevated,
     borderRadius: 12,
     padding: spacing.sm,
-    marginBottom: spacing.md,
-    marginRight: spacing.sm,
+    marginBottom: spacing.sm,
+    // marginRight: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -742,13 +944,13 @@ const styles = StyleSheet.create({
   thumbnailPlaceholder: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#020617',
+    backgroundColor: colors.bgSoft,
   },
   variantFlag: {
     position: 'absolute',
     top: 6,
     right: 6,
-    backgroundColor: '#f97316',
+    backgroundColor: colors.accent,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
@@ -771,11 +973,11 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: 13,
-    color: colors.header,
+    color: colors.primary,
   },
   marginText: {
     fontSize: 11,
-    color: '#16a34a',
+    color: colors.success,
     fontWeight: '600',
   },
   stockChip: {
@@ -786,10 +988,10 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   stockOk: {
-    backgroundColor: '#E8F8F2',
+    backgroundColor: 'rgba(16,185,129,0.12)',
   },
   stockLow: {
-    backgroundColor: '#FDEDEC',
+    backgroundColor: 'rgba(239,68,68,0.14)',
   },
   stockText: {
     fontSize: 11,
@@ -813,9 +1015,55 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.header,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+  },
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+  },
+  menuContainer: {
+    position: 'absolute',
+    bottom: 180,
+    right: 24,
+    gap: 12,
+  },
+  menuItemWhatsApp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  menuIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
     elevation: 5,
+  },
+  menuItemWhatsAppText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    backgroundColor: colors.bgElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
   },
 });
