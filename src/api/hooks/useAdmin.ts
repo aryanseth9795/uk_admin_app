@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/api/client";
 
@@ -16,9 +16,8 @@ export const useAdminProfile = () => {
   return useQuery<AdminProfile>({
     queryKey: ["admin-profile"],
     queryFn: async () => {
-
       const res = await api.get("/admin/me");
-    
+
       return res.data.admin as AdminProfile;
     },
   });
@@ -32,12 +31,6 @@ export const useUpdateAdminProfile = () => {
     },
   });
 };
-
-
-
-
-
-
 
 // export const useGetAdminProductList = (params?: GetAdminProductListParams) => {
 //   const { search, brand, category, page = 1 } = params || {};
@@ -60,7 +53,6 @@ export const useUpdateAdminProfile = () => {
 //   });
 // };
 /* -------- Products (admin) -------- */
-
 
 type GetAdminProductListParams = {
   page?: number;
@@ -119,7 +111,7 @@ export const useGetAdminProductList = (params?: GetAdminProductListParams) => {
 
   return useQuery<AdminProductListResponse>({
     queryKey: [
-      'product-list',
+      "product-list",
       {
         page,
         search,
@@ -134,7 +126,7 @@ export const useGetAdminProductList = (params?: GetAdminProductListParams) => {
       },
     ],
     queryFn: async () => {
-      const res = await api.get('/admin/getproducts', {
+      const res = await api.get("/admin/getproducts", {
         params: {
           page,
           search: search || undefined,
@@ -154,21 +146,17 @@ export const useGetAdminProductList = (params?: GetAdminProductListParams) => {
   });
 };
 
-
 export type AdminProductCategory = "beauty" | "gift" | "grocery" | "general";
-
-
 
 interface CreateAdminProductArgs {
   formData: FormData; // for real API (Multer + Cloudinary)
 }
 
-export const 
-useCreateAdminProduct = () => {
+export const useCreateAdminProduct = () => {
   return useMutation({
     mutationFn: async ({ formData }: CreateAdminProductArgs) => {
-      console.log(formData)
-    
+      // console.log(formData);
+
       const res = await api.post("/admin/addproduct", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
@@ -176,21 +164,19 @@ useCreateAdminProduct = () => {
       });
       return res.data;
     },
-    mutationKey:["product-list"]
+    mutationKey: ["product-list"],
   });
-
 };
-
 
 export const useGetProductDetail = (id: string) => {
   // console.log(id)
   return useQuery({
-    queryKey: ['admin-product-detail', id],
+    queryKey: ["admin-product-detail", id],
     enabled: !!id,
     queryFn: async () => {
       const res = await api.get(`/admin/products/${id}`);
-      // console.log(res.data)
-      return res?.data?.product||"No"; // this will be your full product doc
+      // console.log(res.data);
+      return res?.data?.product || "No"; // this will be your full product doc
     },
   });
 };
@@ -199,38 +185,74 @@ export const useGetProductDetail = (id: string) => {
 export interface UpdateStockPayload {
   productId: string;
   variantId: string;
-  quantity: number;
+  stock: number;
 }
 
 export const useUpdateStock = () => {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (payload: UpdateStockPayload) => {
-      const res = await api.post("/admin/stockproduct", payload);
+      // console.log(payload);
+      const res = await api.put("/admin/updateproductstockbyid", payload);
       return res.data;
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate product list to refresh all products
+      queryClient.invalidateQueries({ queryKey: ["product-list"] });
+
+      // Invalidate specific product detail using the productId from the mutation payload
+      queryClient.invalidateQueries({
+        queryKey: ["admin-product-detail", variables.productId],
+      });
     },
   });
 };
 
 /* -------- Delete Product -------- */
 export const useDeleteProduct = () => {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: async (productId: string) => {
-      const res = await api.delete(`/admin/product/${productId}`);
+      const res = await api.delete(`/admin/deleteproduct/${productId}`);
       return res.data;
+    },
+    onSuccess: () => {
+      // Invalidate product list to refresh all products after deletion
+      queryClient.invalidateQueries({ queryKey: ["product-list"] });
     },
   });
 };
 
 /* -------- Update Product -------- */
 export const useUpdateProduct = () => {
+  const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: async ({ productId, formData }: { productId: string; formData: FormData }) => {
-      const res = await api.put(`/admin/product/${productId}`, formData, {
+    mutationFn: async ({
+      productId,
+      formData,
+    }: {
+      productId: string;
+      formData: FormData;
+    }) => {
+      // console.log(formData)
+      const res = await api.put(`/admin/updateproduct`, formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
       return res.data;
+    },
+    onSuccess: (data, variables) => {
+      // Invalidate product list to refresh all products
+      queryClient.invalidateQueries({ queryKey: ["product-list"] });
+
+      // Invalidate specific product detail using the productId from the mutation payload
+      queryClient.invalidateQueries({
+        queryKey: ["admin-product-detail", variables.productId],
+      });
     },
   });
 };

@@ -16,13 +16,14 @@ export type ColorPalette = {
   success: string;
   warning: string;
   header: string;
+  statusBar: string;
 };
 
 export const lightColors: ColorPalette = {
-  bg: "#F5F3FF",            // page background (soft violet)
-  bgSoft: "#EEF2FF",        // sections, soft cards
-  bgElevated: "#FFFFFF",    // cards, modals
-  primary: "#6366F1",       // main violet (matches logo/splash vibe)
+  bg: "#F5F3FF", // page background (soft violet)
+  bgSoft: "#EEF2FF", // sections, soft cards
+  bgElevated: "#FFFFFF", // cards, modals
+  primary: "#6366F1", // main violet (matches logo/splash vibe)
   primarySoft: "rgba(99,102,241,0.12)",
   accent: "#8B5CF6",
   text: "#0F172A",
@@ -32,7 +33,8 @@ export const lightColors: ColorPalette = {
   danger: "#EF4444",
   success: "#10B981",
   warning: "#F59E0B",
-  header: "#0F172A",        // header/emphasized text
+  header: "#0F172A", // header/emphasized text
+  statusBar: "#F5F3FF", // status bar background
 };
 
 export const darkColors: ColorPalette = {
@@ -49,7 +51,8 @@ export const darkColors: ColorPalette = {
   danger: "#F97373",
   success: "#34D399",
   warning: "#FBBF24",
-  header: "#F9FAFB",        // header/emphasized text
+  header: "#F9FAFB", // header/emphasized text
+  statusBar: "#020617", // status bar background
 };
 
 export let colors: ColorPalette = lightColors;

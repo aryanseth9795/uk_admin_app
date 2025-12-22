@@ -6,7 +6,7 @@ const REFRESH_TOKEN_KEY = "urshop_admin_refresh_token";
 export async function saveTokens(accessToken: string, refreshToken: string) {
   await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
   await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
-  console.log("both saved successfully");
+  // console.log("both saved successfully");
 }
 
 export async function getTokens() {

@@ -19,7 +19,7 @@ export const LoginScreen: React.FC<Props> = () => {
   const onSubmit = () => {
     if (!identifier || !password) return;
    const r= loginMutation.mutate({ mobilenumber: identifier.trim(), password });
-    console.log(r)
+    // console.log(r)
   };
 
   return (
