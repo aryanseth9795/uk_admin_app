@@ -1,236 +1,67 @@
-// import React, { useState } from 'react';
-// import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView } from 'react-native';
-// import { NativeStackScreenProps } from '@react-navigation/native-stack';
-// import { FlashList } from '@shopify/flash-list';
-// import Animated, { FadeInUp, FadeOut, Layout } from 'react-native-reanimated';
-// import { OrdersStackParamList } from '@/navigation/OrdersNavigator';
-// import { useOrders, OrderStatus } from '@/api/hooks/useOrders';
-// import { colors } from '@/theme/colors';
-// import { spacing } from '@/theme/theme';
-// import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import React, { useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ActivityIndicator,
+  Modal,
+} from "react-native";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { FlashList } from "@shopify/flash-list";
+import { Feather } from "@expo/vector-icons";
+import { OrdersStackParamList } from "@/navigation/OrdersNavigator";
+import { useOrders, OrderStatus } from "@/api/hooks/useOrders";
+import { colors } from "@/theme/colors";
+import { spacing } from "@/theme/theme";
+import { ScreenContainer } from "@/components/ui/ScreenContainer";
 
-// type Props = NativeStackScreenProps<OrdersStackParamList, 'OrdersList'>;
+type Props = NativeStackScreenProps<OrdersStackParamList, "OrdersList">;
 
-// const statusFilters: (OrderStatus | 'all')[] = [
-//   'all',
-//   'new_unprocessed',
-//   'processed',
-//   'packed',
-//   'shipped',
-//   'out_for_delivery',
-//   'delivered',
-// ];
-
-// const rangeFilters = ['today', 'yesterday', 'last_3_days', 'last_7_days'];
-
-// export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
-//   const [status, setStatus] = useState<(typeof statusFilters)[number]>('all');
-//   const [range, setRange] = useState<string>('today');
-
-//   const { data: orders, isLoading, refetch } = useOrders({ status, range });
-
-//   return (
-//     <ScreenContainer>
-//       <View style={styles.container}>
-//         <View style={styles.headerRow}>
-//           <Text style={styles.heading}>Orders</Text>
-//         </View>
-
-//         <View style={styles.filterRow}>
-//           <ScrollView
-//             horizontal
-//             showsHorizontalScrollIndicator={false}
-//             contentContainerStyle={styles.filterScrollContent}
-//           >
-//             {statusFilters.map((s) => (
-//               <Pressable
-//                 key={s}
-//                 onPress={() => setStatus(s)}
-//                 style={[styles.chip, status === s && styles.chipActive]}
-//               >
-//                 <Text style={[styles.chipText, status === s && styles.chipTextActive]}>
-//                   {s === 'all' ? 'All' : s.replace(/_/g, ' ')}
-//                 </Text>
-//               </Pressable>
-//             ))}
-//           </ScrollView>
-//         </View>
-
-//         <View style={styles.filterRow}>
-//           <ScrollView
-//             horizontal
-//             showsHorizontalScrollIndicator={false}
-//             contentContainerStyle={styles.filterScrollContent}
-//           >
-//             {rangeFilters.map((r) => (
-//               <Pressable
-//                 key={r}
-//                 onPress={() => setRange(r)}
-//                 style={[styles.chip, range === r && styles.chipActive]}
-//               >
-//                 <Text style={[styles.chipText, range === r && styles.chipTextActive]}>
-//                   {r.replace(/_/g, ' ')}
-//                 </Text>
-//               </Pressable>
-//             ))}
-//           </ScrollView>
-//         </View>
-
-//         {isLoading && (
-//           <View style={styles.center}>
-//             <ActivityIndicator color={colors.tint} />
-//           </View>
-//         )}
-
-//         {!isLoading && (!orders || orders.length === 0) && (
-//           <View style={styles.center}>
-//             <Text style={styles.emptyText}>No orders for this filter.</Text>
-//           </View>
-//         )}
-
-//         {!!orders && orders.length > 0 && (
-//           <FlashList
-//             data={orders}
-//             keyExtractor={(item) => item.id}
-//             estimatedItemSize={80}
-//             refreshing={isLoading}
-//             onRefresh={refetch}
-//             contentContainerStyle={styles.listContent}
-//             renderItem={({ item, index }) => (
-//               <Animated.View
-//                 entering={FadeInUp.delay(index * 40)}
-//                 exiting={FadeOut}
-//                 layout={Layout.springify()}
-//               >
-//                 <Pressable
-//                   onPress={() => navigation.navigate('OrderDetail', { orderId: item.id })}
-//                   style={styles.card}
-//                 >
-//                   <Text style={styles.cardTitle}>#{item.orderId}</Text>
-//                   <Text style={styles.cardSubtitle}>₹{item.totalAmount.toFixed(2)}</Text>
-//                   <Text style={styles.status}>{item.currentStatus.replace(/_/g, ' ').toUpperCase()}</Text>
-//                 </Pressable>
-//               </Animated.View>
-//             )}
-//           />
-//         )}
-//       </View>
-//     </ScreenContainer>
-//   );
-// };
-
-// const styles = StyleSheet.create({
-//   container: { flex: 1, padding: spacing.md },
-//   headerRow: {
-//     flexDirection: 'row',
-//     justifyContent: 'space-between',
-//     alignItems: 'center',
-//     marginBottom: spacing.md,
-//     marginTop:spacing.md
-//   },
-//   heading: {
-//     fontSize: 30,
-//     fontWeight: '700',
-//     color: colors.text,
-
-//   },
-//   filterRow: {
-//     flexDirection: 'row',
-//     flexWrap: 'wrap',
-//     gap: 8,
-//     marginBottom: spacing.sm,
-//   } as any,
-//   chip: {
-//     paddingHorizontal: spacing.md,
-//     paddingVertical: spacing.xs,
-//     borderRadius: 16,
-//     borderWidth: 1,
-//     borderColor: colors.chipBorder,
-//     backgroundColor: colors.chipBg,
-//   },
-//   chipActive: {
-//     backgroundColor: colors.tint,
-//     borderColor: colors.tint,
-//   },
-//   chipText: {
-//     fontSize: 12,
-//     color: colors.muted,
-//   },
-//   chipTextActive: {
-//     color: '#020617',
-//     fontWeight: '600',
-//   },
-//   listContent: {
-//     paddingTop: spacing.md,
-//     paddingBottom: spacing.lg,
-//   },
-//   card: {
-//     backgroundColor: colors.card,
-//     borderRadius: 12,
-//     padding: spacing.md,
-//     marginBottom: spacing.sm,
-//     borderWidth: 1,
-//     borderColor: colors.border,
-//   },
-//   cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
-//   cardSubtitle: { fontSize: 14, color: colors.muted, marginTop: 4 },
-//   status: { marginTop: 6, fontSize: 12, fontWeight: '500', color: colors.header },
-//   center: {
-//     paddingVertical: spacing.lg,
-//     alignItems: 'center',
-//   },
-//   emptyText: {
-//     color: colors.muted,
-//     fontSize: 13,
-//   },
-// });
-
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ActivityIndicator, ScrollView } from 'react-native';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { FlashList } from '@shopify/flash-list';
-import Animated, { FadeInUp, FadeOut, Layout } from 'react-native-reanimated';
-import { OrdersStackParamList } from '@/navigation/OrdersNavigator';
-import { useOrders, OrderStatus } from '@/api/hooks/useOrders';
-import { colors } from '@/theme/colors';
-import { spacing } from '@/theme/theme';
-import { ScreenContainer } from '@/components/ui/ScreenContainer';
-
-type Props = NativeStackScreenProps<OrdersStackParamList, 'OrdersList'>;
-
-const statusFilters: (OrderStatus | 'all')[] = [
-  'all',
-  'new_unprocessed',
-  'processed',
-  'packed',
-  'shipped',
-  'out_for_delivery',
-  'delivered',
+const statusFilters: {
+  key: OrderStatus | "all";
+  label: string;
+  color: string;
+}[] = [
+  { key: "all", label: "All Orders", color: "#6366F1" },
+  { key: "placed", label: "Placed", color: "#EF4444" },
+  { key: "shipped", label: "Shipped", color: "#3B82F6" },
+  { key: "delivered", label: "Delivered", color: "#10B981" },
+  { key: "cancelled", label: "Cancelled", color: "#6B7280" },
 ];
 
-type DateRangeKey = 'recent' | 'today' | 'yesterday' | 'last_3_days' | 'last_7_days';
+type DateRangeKey =
+  | "recent"
+  | "today"
+  | "yesterday"
+  | "last_3_days"
+  | "last_7_days";
 
-const dateRangeFilters: { key: DateRangeKey; label: string }[] = [
-  { key: 'recent', label: 'Recent' },
-  { key: 'today', label: 'Today' },
-  { key: 'yesterday', label: 'Yesterday' },
-  { key: 'last_3_days', label: 'Last 3 days' },
-  { key: 'last_7_days', label: 'Last 7 days' },
+const dateRangeFilters: {
+  key: DateRangeKey;
+  label: string;
+  icon: keyof typeof Feather.glyphMap;
+}[] = [
+  { key: "recent", label: "Recent 30", icon: "clock" },
+  { key: "today", label: "Today", icon: "calendar" },
+  { key: "yesterday", label: "Yesterday", icon: "chevron-left" },
+  { key: "last_3_days", label: "Last 3 Days", icon: "trending-down" },
+  { key: "last_7_days", label: "Last 7 Days", icon: "bar-chart-2" },
 ];
 
 const getDateRange = (range: DateRangeKey): { from?: string; to?: string } => {
-  if (range === 'recent') return {};
+  if (range === "recent") return {};
 
   const now = new Date();
   const end = new Date(now);
 
-  if (range === 'today') {
+  if (range === "today") {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
     return { from: start.toISOString(), to: end.toISOString() };
   }
 
-  if (range === 'yesterday') {
+  if (range === "yesterday") {
     const start = new Date();
     start.setDate(start.getDate() - 1);
     start.setHours(0, 0, 0, 0);
@@ -242,14 +73,13 @@ const getDateRange = (range: DateRangeKey): { from?: string; to?: string } => {
     return { from: start.toISOString(), to: yEnd.toISOString() };
   }
 
-  if (range === 'last_3_days') {
+  if (range === "last_3_days") {
     const start = new Date();
     start.setDate(start.getDate() - 3);
     start.setHours(0, 0, 0, 0);
     return { from: start.toISOString(), to: end.toISOString() };
   }
 
-  // last_7_days
   const start = new Date();
   start.setDate(start.getDate() - 7);
   start.setHours(0, 0, 0, 0);
@@ -258,221 +88,355 @@ const getDateRange = (range: DateRangeKey): { from?: string; to?: string } => {
 
 const getStatusBadgeColors = (status: string) => {
   switch (status) {
-    case 'delivered':
-      return { bg: '#dcfce7', text: '#166534' }; // green
-    case 'shipped':
-    case 'out_for_delivery':
-      return { bg: '#dbeafe', text: '#1d4ed8' }; // blue
-    case 'packed':
-    case 'processed':
-      return { bg: '#fef9c3', text: '#854d0e' }; // amber
-    case 'new_unprocessed':
+    case "delivered":
+      return { bg: "#dcfce7", text: "#166534" };
+    case "shipped":
+      return { bg: "#dbeafe", text: "#1d4ed8" };
+    case "placed":
+      return { bg: "#fee2e2", text: "#991b1b" };
+    case "cancelled":
+      return { bg: "#f3f4f6", text: "#374151" };
     default:
-      return { bg: '#fee2e2', text: '#991b1b' }; // red
+      return { bg: "#f3f4f6", text: "#374151" };
   }
 };
 
-const getStatusLabel = (status: OrderStatus | 'all') => {
-  if (status === 'all') return 'All statuses';
-  return status?.replace(/_/g, ' ');
+const formatDate = (dateStr: string) => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 };
 
-const getDateLabel = (range: DateRangeKey) => {
-  const entry = dateRangeFilters.find((d) => d.key === range);
-  return entry?.label ?? 'Recent';
+const normalizeStatus = (status: string): OrderStatus => {
+  const normalizedKey = status.toLowerCase();
+  switch (normalizedKey) {
+    case "new_unprocessed":
+    case "placed":
+    case "pending":
+    case "processing":
+    case "packed":
+      return "placed";
+    case "out_for_delivery":
+    case "shipped":
+      return "shipped";
+    default:
+      return normalizedKey as OrderStatus;
+  }
 };
+
+// Memoized Order Card component
+const OrderCard = React.memo(
+  ({ item, onPress }: { item: any; onPress: () => void }) => {
+    const rawStatus = item.status || "pending";
+    const normalizedStatus = normalizeStatus(rawStatus);
+
+    // Use normalized status for label and badge
+    const statusLabel =
+      normalizedStatus.charAt(0).toUpperCase() + normalizedStatus.slice(1);
+    const badge = getStatusBadgeColors(normalizedStatus);
+    const orderDate = item.createdAt ? formatDate(item.createdAt) : "";
+
+    return (
+      <Pressable onPress={onPress} style={styles.card}>
+        <View style={styles.cardTopRow}>
+          <View style={styles.orderIdSection}>
+            <Text style={styles.cardLabel}>Order ID</Text>
+            <Text style={styles.cardTitle} numberOfLines={1}>
+              #{item?._id?.slice(-8)?.toUpperCase()}
+            </Text>
+          </View>
+
+          <View style={[styles.statusPill, { backgroundColor: badge.bg }]}>
+            <Text style={[styles.statusText, { color: badge.text }]}>
+              {statusLabel}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.cardMiddleRow}>
+          <View style={styles.infoBlock}>
+            <Text style={styles.cardLabel}>Amount</Text>
+            <Text style={styles.cardValue}>
+              ₹{item.totalAmount?.toFixed(2)}
+            </Text>
+          </View>
+          <View style={styles.infoBlock}>
+            <Text style={styles.cardLabel}>Date</Text>
+            <Text style={styles.cardValueSmall}>{orderDate}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardBottomRow}>
+          <Text style={styles.viewDetailsText}>View Details</Text>
+          <Text style={styles.cardChevron}>›</Text>
+        </View>
+      </Pressable>
+    );
+  }
+);
 
 export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
-  const [status, setStatus] = useState<(typeof statusFilters)[number]>('all');
-  const [range, setRange] = useState<DateRangeKey>('recent');
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [status, setStatus] =
+    useState<(typeof statusFilters)[number]["key"]>("all");
+  const [range, setRange] = useState<DateRangeKey>("recent");
+  const [showFilterModal, setShowFilterModal] = useState(false);
 
   const { from, to } = getDateRange(range);
-
   const { data: orders, isLoading, refetch } = useOrders({ status, from, to });
 
-  // console.log(orders)
-  const handleResetFilters = () => {
-    setStatus('all');
-    setRange('recent');
-  };
+  const handleResetFilters = useCallback(() => {
+    setStatus("all");
+    setRange("recent");
+  }, []);
 
-  const statusSummary = getStatusLabel(status);
-  const dateSummary = getDateLabel(range);
+  const handleOrderPress = useCallback(
+    (orderId: string) => {
+      navigation.navigate("OrderDetail", { orderId });
+    },
+    [navigation]
+  );
+
+  const keyExtractor = useCallback((item: any) => item._id, []);
+
+  const renderItem = useCallback(
+    ({ item }: { item: any }) => (
+      <OrderCard item={item} onPress={() => handleOrderPress(item._id)} />
+    ),
+    [handleOrderPress]
+  );
+
+  const activeStatus = statusFilters.find((s) => s.key === status);
+  const activeRange = dateRangeFilters.find((r) => r.key === range);
+  const hasActiveFilters = status !== "all" || range !== "recent";
 
   return (
     <ScreenContainer>
       <View style={styles.container}>
+        {/* Brand Header */}
         <View style={styles.headerRow}>
-          <Text style={styles.heading}>Orders</Text>
+          <Text style={styles.heading}>UR SHOP</Text>
         </View>
 
-        {/* Collapsible Filter Panel */}
-        <Animated.View layout={Layout.springify()}>
-          <View style={styles.filterCard}>
-            <Pressable
-              style={styles.filterCardHeader}
-              onPress={() => setFiltersOpen((prev) => !prev)}
+        {/* Section Title with Filter Button */}
+        <View style={styles.titleRow}>
+          <Text style={styles.sectionTitle}>Orders</Text>
+          <Pressable
+            style={[
+              styles.filterToggleButton,
+              hasActiveFilters && styles.filterToggleActive,
+            ]}
+            onPress={() => setShowFilterModal(true)}
+          >
+            <Feather
+              name="filter"
+              size={16}
+              color={hasActiveFilters ? "#FFFFFF" : colors.text}
+            />
+            {hasActiveFilters && <View style={styles.filterBadge} />}
+          </Pressable>
+        </View>
+
+        {/* Active Filter Summary */}
+        {hasActiveFilters && (
+          <View style={styles.filterSummary}>
+            <View
+              style={[
+                styles.summaryChip,
+                { backgroundColor: activeStatus?.color + "20" },
+              ]}
             >
-              <View style={{ flex: 1 }}>
-                <Text style={styles.filterTitle}>Filters</Text>
-                <Text style={styles.filterSubtitle}>
-                  {statusSummary} · {dateSummary}
-                </Text>
-              </View>
-              <Text style={styles.chevron}>{filtersOpen ? '▲' : '▼'}</Text>
+              <Text
+                style={[styles.summaryText, { color: activeStatus?.color }]}
+              >
+                {activeStatus?.label}
+              </Text>
+            </View>
+            <View style={styles.summaryChip}>
+              <Feather
+                name={activeRange?.icon || "clock"}
+                size={12}
+                color={colors.primary}
+                style={{ marginRight: 4 }}
+              />
+              <Text style={[styles.summaryText, { color: colors.primary }]}>
+                {activeRange?.label}
+              </Text>
+            </View>
+            <Pressable onPress={handleResetFilters}>
+              <Text style={styles.clearAllText}>Clear All</Text>
             </Pressable>
-
-            {filtersOpen && (
-              <>
-                <View style={styles.filterHeaderRow}>
-                  <Pressable onPress={handleResetFilters}>
-                    <Text style={styles.clearText}>Reset</Text>
-                  </Pressable>
-                </View>
-
-                <View style={styles.filterSection}>
-                  <Text style={styles.filterLabel}>Status</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.filterScrollContent as any}
-                  >
-                    {statusFilters.map((s) => (
-                      <Pressable
-                        key={s}
-                        onPress={() => setStatus(s)}
-                        style={[
-                          styles.chip,
-                          status === s && styles.chipActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            status === s && styles.chipTextActive,
-                          ]}
-                        >
-                          {s === 'all' ? 'All' : s?.replace(/_/g, ' ')}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.divider} />
-
-                <View style={styles.filterSection}>
-                  <Text style={styles.filterLabel}>Date</Text>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.filterScrollContent as any}
-                  >
-                    {dateRangeFilters.map((r) => (
-                      <Pressable
-                        key={r.key}
-                        onPress={() => setRange(r.key)}
-                        style={[
-                          styles.chip,
-                          range === r.key && styles.chipActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            range === r.key && styles.chipTextActive,
-                          ]}
-                        >
-                          {r.label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-              </>
-            )}
           </View>
-        </Animated.View>
+        )}
 
         {isLoading && (
           <View style={styles.center}>
-            <ActivityIndicator color={colors.tint} />
+            <ActivityIndicator color={colors.primary} />
           </View>
         )}
 
         {!isLoading && (!orders || orders.length === 0) && (
           <View style={styles.center}>
-            <Text style={styles.emptyText}>No orders for this filter.</Text>
+            <Feather
+              name="inbox"
+              size={48}
+              color={colors.muted}
+              style={{ marginBottom: spacing.sm }}
+            />
+            <Text style={styles.emptyText}>No orders found</Text>
+            {hasActiveFilters && (
+              <Pressable
+                onPress={handleResetFilters}
+                style={{ marginTop: spacing.sm }}
+              >
+                <Text style={styles.clearAllText}>Try resetting filters</Text>
+              </Pressable>
+            )}
           </View>
         )}
 
         {!!orders && orders.length > 0 && (
           <FlashList
             data={orders}
-            keyExtractor={(item) => item._id}
-            // estimatedItemSize={100}
+            keyExtractor={keyExtractor}
+            // estimatedItemSize={140}
             refreshing={isLoading}
             onRefresh={refetch}
             contentContainerStyle={styles.listContent}
-            renderItem={({ item, index }) => {
-              const statusLabel = item.status
-                ?.replace(/_/g, ' ')
-                .toUpperCase();
-              const badge = getStatusBadgeColors(item.status);
-
-              return (
-                <Animated.View
-                  entering={FadeInUp.delay(index * 40)}
-                  exiting={FadeOut}
-                  layout={Layout.springify()}
-                >
-                  <Pressable
-                    onPress={() =>
-                      navigation.navigate('OrderDetail', {
-                        orderId: item._id,
-                      })
-                    }
-                    style={styles.card}
-                  >
-                    <View style={styles.cardTopRow}>
-                      <View>
-                        <Text style={styles.cardLabel}>Order ID</Text>
-                        <Text style={styles.cardTitle}>#{item?._id}</Text>
-                      </View>
-
-                      <View
-                        style={[
-                          styles.statusPill,
-                          { backgroundColor: badge.bg },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            { color: badge.text },
-                          ]}
-                        >
-                          {statusLabel}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.cardBottomRow}>
-                      <View>
-                        <Text style={styles.cardLabel}>Value</Text>
-                        <Text style={styles.cardValue}>
-                          ₹{item.totalAmount.toFixed(2)}
-                        </Text>
-                      </View>
-                      <Text style={styles.cardChevron}>›</Text>
-                    </View>
-                  </Pressable>
-                </Animated.View>
-              );
-            }}
+            renderItem={renderItem}
+            showsVerticalScrollIndicator={false}
           />
         )}
+
+        {/* Filter Modal */}
+        <Modal
+          visible={showFilterModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowFilterModal(false)}
+        >
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setShowFilterModal(false)}
+          >
+            <Pressable
+              style={styles.modalContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Filter Orders</Text>
+                <Pressable
+                  onPress={() => setShowFilterModal(false)}
+                  style={styles.closeButton}
+                >
+                  <Feather name="x" size={24} color={colors.text} />
+                </Pressable>
+              </View>
+
+              {/* Status Filter */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterGroupTitle}>Order Status</Text>
+                <View style={styles.filterGrid}>
+                  {statusFilters.map((s) => (
+                    <Pressable
+                      key={s.key}
+                      onPress={() => setStatus(s.key)}
+                      style={[
+                        styles.statusFilterCard,
+                        status === s.key && [
+                          styles.statusFilterCardActive,
+                          {
+                            borderColor: s.color,
+                            backgroundColor: s.color + "15",
+                          },
+                        ],
+                      ]}
+                    >
+                      <View
+                        style={[styles.statusDot, { backgroundColor: s.color }]}
+                      />
+                      <Text
+                        style={[
+                          styles.statusFilterText,
+                          status === s.key && {
+                            color: s.color,
+                            fontWeight: "600",
+                          },
+                        ]}
+                      >
+                        {s.label}
+                      </Text>
+                      {status === s.key && (
+                        <Feather
+                          name="check-circle"
+                          size={18}
+                          color={s.color}
+                        />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Date Range Filter */}
+              <View style={styles.filterGroup}>
+                <Text style={styles.filterGroupTitle}>Time Period</Text>
+                <View style={styles.dateGrid}>
+                  {dateRangeFilters.map((r) => (
+                    <Pressable
+                      key={r.key}
+                      onPress={() => setRange(r.key)}
+                      style={[
+                        styles.dateFilterCard,
+                        range === r.key && styles.dateFilterCardActive,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.iconCircle,
+                          range === r.key && styles.iconCircleActive,
+                        ]}
+                      >
+                        <Feather
+                          name={r.icon}
+                          size={18}
+                          color={range === r.key ? "#FFFFFF" : colors.primary}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.dateFilterText,
+                          range === r.key && styles.dateFilterTextActive,
+                        ]}
+                      >
+                        {r.label}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.modalActions}>
+                <Pressable
+                  style={styles.resetButton}
+                  onPress={handleResetFilters}
+                >
+                  <Text style={styles.resetButtonText}>Reset All</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.applyButton}
+                  onPress={() => setShowFilterModal(false)}
+                >
+                  <Text style={styles.applyButtonText}>Apply Filters</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     </ScreenContainer>
   );
@@ -481,95 +445,219 @@ export const OrdersListScreen: React.FC<Props> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: spacing.md },
   headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    marginTop: spacing.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+    marginTop: spacing.sm,
   },
   heading: {
     fontSize: 28,
-    fontWeight: '700',
+    fontWeight: "900",
+    color: colors.primary,
+  },
+  titleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
     color: colors.text,
   },
-
-  // Filter panel
-  filterCard: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
+  filterToggleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.bgElevated,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.border,
   },
-  filterCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  filterToggleActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
-  filterTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  filterSubtitle: {
-    fontSize: 12,
-    color: colors.muted,
-    marginTop: 2,
-  },
-  chevron: {
-    fontSize: 16,
-    color: colors.muted,
-    marginLeft: spacing.sm,
-  },
-  filterHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: spacing.xs,
-  },
-  clearText: {
-    fontSize: 11,
-    color: colors.tint,
-    fontWeight: '500',
-  },
-  filterSection: {
-    marginTop: spacing.sm,
-  },
-  filterLabel: {
-    fontSize: 12,
-    color: colors.muted,
-    marginBottom: spacing.xs,
-  },
-  filterScrollContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 8,
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border,
-    marginVertical: spacing.sm,
+  filterBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#10B981",
+    borderWidth: 2,
+    borderColor: colors.primary,
   },
 
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+  // Filter Summary
+  filterSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    flexWrap: "wrap",
+  } as any,
+  summaryChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
     borderRadius: 20,
+    backgroundColor: colors.bgElevated,
     borderWidth: 1,
-    borderColor: colors.chipBorder,
-    backgroundColor: colors.chipBg,
+    borderColor: colors.border,
   },
-  chipActive: {
-    backgroundColor: colors.tint,
-    borderColor: colors.tint,
-  },
-  chipText: {
+  summaryText: {
     fontSize: 12,
-    color: colors.muted,
+    fontWeight: "500",
   },
-  chipTextActive: {
-    color: '#020617',
-    fontWeight: '600',
+  clearAllText: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: "600",
+  },
+
+  // Filter Modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: colors.bgElevated,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.lg,
+    maxHeight: "85%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.lg,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  closeButton: {
+    padding: spacing.xs,
+  },
+
+  filterGroup: {
+    marginBottom: spacing.lg,
+  },
+  filterGroupTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: colors.muted,
+    marginBottom: spacing.sm,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  filterGrid: {
+    gap: spacing.sm,
+  },
+  statusFilterCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: spacing.md,
+    borderRadius: 12,
+    backgroundColor: colors.bgSoft,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  statusFilterCardActive: {
+    borderWidth: 2,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: spacing.sm,
+  },
+  statusFilterText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+  },
+
+  dateGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  } as any,
+  dateFilterCard: {
+    alignItems: "center",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 12,
+    backgroundColor: colors.bgSoft,
+    borderWidth: 2,
+    borderColor: "transparent",
+    minWidth: 100,
+  },
+  dateFilterCardActive: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: spacing.xs,
+  },
+  iconCircleActive: {
+    backgroundColor: colors.primary,
+  },
+  dateFilterText: {
+    fontSize: 12,
+    color: colors.text,
+    textAlign: "center",
+  },
+  dateFilterTextActive: {
+    fontWeight: "600",
+    color: colors.primary,
+  },
+
+  modalActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  } as any,
+  resetButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: colors.bgSoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  resetButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  applyButton: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: colors.primary,
+  },
+  applyButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#FFFFFF",
   },
 
   listContent: {
@@ -578,43 +666,73 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: colors.card,
+    backgroundColor: colors.bgElevated,
     borderRadius: 16,
     padding: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 10,
     elevation: 2,
   },
   cardTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
   } as any,
-  cardBottomRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
+  orderIdSection: {
+    flex: 1,
+  },
+  cardMiddleRow: {
+    flexDirection: "row",
     marginTop: spacing.sm,
+    columnGap: spacing.lg,
+  } as any,
+  infoBlock: {
+    minWidth: 80,
+  },
+  cardBottomRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   } as any,
   cardLabel: {
     fontSize: 11,
     color: colors.muted,
   },
-  cardTitle: { fontSize: 16, fontWeight: '600', color: colors.text },
-  cardValue: {
+  cardTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: "700",
+    color: colors.text,
+    marginTop: 2,
+  },
+  cardValue: {
+    fontSize: 16,
+    fontWeight: "700",
     color: colors.header,
     marginTop: 2,
   },
+  cardValueSmall: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: colors.text,
+    marginTop: 2,
+  },
+  viewDetailsText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: "500",
+  },
   cardChevron: {
     fontSize: 20,
-    color: colors.muted,
+    color: colors.primary,
   },
 
   statusPill: {
@@ -624,15 +742,16 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: "600",
+    textTransform: "uppercase",
   },
 
   center: {
-    paddingVertical: spacing.lg,
-    alignItems: 'center',
+    paddingVertical: spacing.lg * 2,
+    alignItems: "center",
   },
   emptyText: {
     color: colors.muted,
-    fontSize: 13,
+    fontSize: 14,
   },
 });

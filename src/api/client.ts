@@ -5,7 +5,7 @@ import { saveTokens } from "@/utils/tokenStorage";
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 45000,
 });
 
 let isRefreshing = false;
