@@ -184,7 +184,6 @@ export const UsersScreen: React.FC<Props> = ({ navigation }) => {
             <FlashList
               data={users}
               keyExtractor={keyExtractor}
-              estimatedItemSize={150}
               refreshing={isLoading}
               onRefresh={refetch}
               contentContainerStyle={styles.listContent}

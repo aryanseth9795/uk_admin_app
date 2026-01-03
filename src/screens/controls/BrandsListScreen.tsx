@@ -100,7 +100,6 @@ export const BrandsListScreen: React.FC<Props> = ({ navigation }) => {
             <FlashList
               data={data}
               keyExtractor={keyExtractor}
-              estimatedItemSize={80}
               refreshing={isLoading}
               onRefresh={refetch}
               contentContainerStyle={styles.listContent}

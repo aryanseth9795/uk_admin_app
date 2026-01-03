@@ -153,7 +153,6 @@ export const UserOrderHistoryScreen: React.FC<Props> = ({
             <FlashList
               data={orders}
               keyExtractor={keyExtractor}
-              estimatedItemSize={140}
               refreshing={isLoading}
               onRefresh={refetch}
               contentContainerStyle={styles.listContent}

@@ -12,9 +12,7 @@
       "backgroundColor": "#6F56BF"
     },
 
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
 
     "ios": {
       "supportsTablet": true,
@@ -51,7 +49,23 @@
 
     "plugins": [
       "expo-font",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#6F56BF",
+          "sounds": [],
+          "mode": "default"
+        }
+      ]
+    ],
+
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#6F56BF",
+      "androidMode": "default",
+      "androidCollapsedTitle": "New Order Alert"
+    }
   }
 }
