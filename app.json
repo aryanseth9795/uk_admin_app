@@ -29,9 +29,10 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.urshop.admin",
+      "googleServicesFile": "./google-services.json",
       "splash": {
         "image": "./assets/splash.png",
-        "resizeMode": "coverr",
+        "resizeMode": "cover",
         "backgroundColor": "#6F56BF"
       }
     },
@@ -41,7 +42,7 @@
     },
 
     "extra": {
-      "apiBaseUrl": "http://192.168.1.11:3001/api/v1",
+      "apiBaseUrl": "https://urs-backend.onrender.com",
       "eas": {
         "projectId": "54c90fa8-6d73-4e1f-9f27-307d34d52312"
       }

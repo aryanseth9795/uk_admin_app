@@ -3,6 +3,7 @@ import * as Device from "expo-device";
 import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_BASE_URL } from "@/utils/env";
+import { getTokens } from "@/utils/tokenStorage";
 
 // Storage key for expo push token
 const EXPO_TOKEN_KEY = "adminExpoToken";
@@ -55,7 +56,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-
+    console.log("Notification permissions status:", finalStatus);
     return finalStatus === "granted";
   } catch (error) {
     console.error("Error requesting notification permissions:", error);
@@ -77,7 +78,7 @@ export async function getExpoPushToken(): Promise<string | null> {
 
     // Get the Expo push token
     const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: "your-expo-project-id", // TODO: Replace with actual project ID
+      projectId: "54c90fa8-6d73-4e1f-9f27-307d34d52312",
     });
 
     return tokenData.data;
@@ -118,8 +119,8 @@ export async function registerForPushNotifications(): Promise<boolean> {
     await AsyncStorage.setItem(EXPO_TOKEN_KEY, expoToken);
 
     // Step 5: Register token with backend
-    const adminAuthToken = await AsyncStorage.getItem("adminAuthToken");
-    if (!adminAuthToken) {
+    const { accessToken } = await getTokens();
+    if (!accessToken) {
       console.error("No admin auth token found");
       return false;
     }
@@ -128,7 +129,7 @@ export async function registerForPushNotifications(): Promise<boolean> {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${adminAuthToken}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         expoToken,
@@ -170,8 +171,8 @@ export async function unregisterPushNotifications(): Promise<boolean> {
       return true; // Not an error, just nothing to do
     }
 
-    const adminAuthToken = await AsyncStorage.getItem("adminAuthToken");
-    if (!adminAuthToken) {
+    const { accessToken } = await getTokens();
+    if (!accessToken) {
       console.warn("No admin auth token found for unregistration");
       // Still clear local token
       await AsyncStorage.removeItem(EXPO_TOKEN_KEY);
@@ -182,7 +183,7 @@ export async function unregisterPushNotifications(): Promise<boolean> {
       method: "DELETE",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${adminAuthToken}`,
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ expoToken }),
     });

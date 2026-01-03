@@ -106,17 +106,23 @@ export const StockListScreen: React.FC<Props> = ({ route, navigation }) => {
   const isLowStock = type === "low-stock";
 
   // Call hooks conditionally but always in the same order
-  const outOfStockQuery = useOutOfStockProducts(1);
-  const lowStockQuery = useLowStockProducts(1, 2);
+  const outOfStockQuery = useOutOfStockProducts();
+  const lowStockQuery = useLowStockProducts(2);
 
   // Select the appropriate query result
   const {
-    data: queryData,
+    data,
     isLoading,
     refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
   } = isOutOfStock ? outOfStockQuery : lowStockQuery;
 
-  const products = queryData?.products || [];
+  // Flatten products from all pages
+  const products = data?.pages.flatMap((page) => page.products || []) || [];
+  const totalCount = data?.pages[0]?.total || 0;
+  const currentPageCount = data?.pages.length || 0;
 
   const handleProductPress = useCallback(
     (productId: string) => {
@@ -138,6 +144,22 @@ export const StockListScreen: React.FC<Props> = ({ route, navigation }) => {
     ),
     [handleProductPress, type]
   );
+
+  const loadMore = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, type]);
+
+  const renderFooter = useCallback(() => {
+    if (!isFetchingNextPage) return null;
+    return (
+      <View style={styles.footerLoader}>
+        <ActivityIndicator color={colors.primary} />
+        <Text style={styles.footerText}>Loading more...</Text>
+      </View>
+    );
+  }, [isFetchingNextPage]);
 
   return (
     <ScreenContainer>
@@ -164,7 +186,8 @@ export const StockListScreen: React.FC<Props> = ({ route, navigation }) => {
           <>
             <View style={styles.countRow}>
               <Text style={styles.countText}>
-                {products.length}{" "}
+                {products.length}
+                {totalCount > products.length && ` of ${totalCount}`}{" "}
                 {products.length === 1 ? "product" : "products"}
               </Text>
               <Pressable onPress={() => refetch()} style={styles.refreshButton}>
@@ -174,12 +197,14 @@ export const StockListScreen: React.FC<Props> = ({ route, navigation }) => {
             <FlashList
               data={products}
               keyExtractor={keyExtractor}
-              // estimatedItemSize={90}
               refreshing={isLoading}
               onRefresh={refetch}
               contentContainerStyle={styles.listContent}
               renderItem={renderItem}
               showsVerticalScrollIndicator={false}
+              onEndReached={loadMore}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={renderFooter}
             />
           </>
         )}
@@ -340,5 +365,14 @@ const styles = StyleSheet.create({
   },
   stockTextGreen: {
     color: "#16a34a",
+  },
+  footerLoader: {
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  footerText: {
+    fontSize: 12,
+    color: colors.muted,
   },
 });

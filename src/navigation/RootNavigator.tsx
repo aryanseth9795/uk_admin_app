@@ -1,4 +1,4 @@
-import { USE_MOCKS } from "@/utils/devToggle";
+
 import React, { forwardRef } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { AuthNavigator } from "./AuthNavigator";

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 
 export const useSalesReport = (range: string) => {
@@ -141,29 +141,68 @@ export const useProductStats = (threshold: number = 2) => {
   });
 };
 
-export const useOutOfStockProducts = (page: number = 1) => {
-  return useQuery({
-    queryKey: ["out-of-stock-products", page],
-    queryFn: async () => {
+export const useOutOfStockProducts = () => {
+  return useInfiniteQuery({
+    queryKey: ["out-of-stock-products"],
+    queryFn: async ({ pageParam = 1 }) => {
       const res = await api.get("/admin/out-of-stock", {
-        params: { page },
+        params: { page: pageParam },
       });
       return res.data;
     },
+    getNextPageParam: (lastPage, allPages) => {
+      const totalProducts = lastPage.total || 0;
+      const loadedProducts = allPages.reduce(
+        (sum, page) => sum + (page.products?.length || 0),
+        0
+      );
+      const lastPageCount = lastPage.products?.length || 0;
+      const PAGE_SIZE = 50; // Default page size from backend
+
+      // If total is missing or 0, use heuristic: if last page is full, there might be more
+      if (totalProducts === 0 && lastPageCount >= PAGE_SIZE) {
+        return allPages.length + 1;
+      }
+
+      // If we have more products to load, return next page number
+      if (loadedProducts < totalProducts) {
+        return allPages.length + 1;
+      }
+      return undefined; // No more pages
+    },
+    initialPageParam: 1,
   });
 };
 
-export const useLowStockProducts = (
-  page: number = 1,
-  threshold: number = 2
-) => {
-  return useQuery({
-    queryKey: ["low-stock-products", page, threshold],
-    queryFn: async () => {
+export const useLowStockProducts = (threshold: number = 2) => {
+  return useInfiniteQuery({
+    queryKey: ["low-stock-products", threshold],
+    queryFn: async ({ pageParam = 1 }) => {
       const res = await api.get("/admin/low-stock", {
-        params: { page, threshold },
+        params: { page: pageParam, threshold },
       });
       return res.data;
     },
+    getNextPageParam: (lastPage, allPages) => {
+      const totalProducts = lastPage.total || 0;
+      const loadedProducts = allPages.reduce(
+        (sum, page) => sum + (page.products?.length || 0),
+        0
+      );
+      const lastPageCount = lastPage.products?.length || 0;
+      const PAGE_SIZE = 50; // Default page size from backend
+
+      // If total is missing or 0, use heuristic: if last page is full, there might be more
+      if (totalProducts === 0 && lastPageCount >= PAGE_SIZE) {
+        return allPages.length + 1;
+      }
+
+      // If we have more products to load, return next page number
+      if (loadedProducts < totalProducts) {
+        return allPages.length + 1;
+      }
+      return undefined; // No more pages
+    },
+    initialPageParam: 1,
   });
 };

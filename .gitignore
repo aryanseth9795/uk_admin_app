@@ -3,3 +3,10 @@
 /25-11-25.md
 /android
 /.expo
+
+# Firebase Service Account Keys (sensitive!)
+service-account-key.json
+*-service-account-*.json
+
+ur-admin-firebase-adminsdk-fbsvc-2af79ee056.json
+google-services.json

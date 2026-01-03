@@ -11,8 +11,12 @@ import { colors } from "@/theme/colors";
 import { ThemeModeProvider, useThemeMode } from "@/theme/ThemeModeContext";
 import Toast from "react-native-toast-message";
 import * as Notifications from "expo-notifications";
-import { configureNotificationHandler } from "@/services/notificationService";
+import {
+  configureNotificationHandler,
+  registerForPushNotifications,
+} from "@/services/notificationService";
 import { NavigationContainerRef } from "@react-navigation/native";
+import { getTokens } from "@/utils/tokenStorage";
 
 // Configure notification handler on app startup
 configureNotificationHandler();
@@ -20,6 +24,46 @@ configureNotificationHandler();
 const AppShell: React.FC = () => {
   const { mode } = useThemeMode();
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
+
+  // Register push notifications on app startup if user is authenticated
+  useEffect(() => {
+    console.log(
+      "🚀 App.tsx mounted - checking authentication for push notifications..."
+    );
+
+    const registerPushOnStartup = async () => {
+      try {
+        const { accessToken } = await getTokens();
+        console.log(
+          "🔑 Admin auth token status:",
+          accessToken ? "EXISTS" : "NOT FOUND"
+        );
+
+        if (accessToken) {
+          console.log(
+            "🔔 User authenticated, registering for push notifications on startup..."
+          );
+          const registered = await registerForPushNotifications();
+          if (registered) {
+            console.log("✅ Push notifications enabled on startup");
+          } else {
+            console.warn("⚠️ Push notification registration failed on startup");
+          }
+        } else {
+          console.log(
+            "ℹ️ No admin token found - skipping push notification registration"
+          );
+        }
+      } catch (error) {
+        console.error(
+          "Error checking auth status for push notifications:",
+          error
+        );
+      }
+    };
+
+    registerPushOnStartup();
+  }, []);
 
   useEffect(() => {
     // Listener for notifications received while app is in foreground
